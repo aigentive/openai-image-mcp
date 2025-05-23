@@ -17,7 +17,6 @@ def test_import_server():
         assert server is not None
         
         # Test that key components are available
-        assert hasattr(server, 'generate_image')
         assert hasattr(server, 'generate_and_download_image') 
         assert hasattr(server, 'edit_image')
         assert hasattr(server, 'mcp')
@@ -55,7 +54,7 @@ def test_environment_variable_check():
                 main()
                 
                 # Should log error and not run server
-                mock_logger.error.assert_called_with("OPENAI_API_KEY environment variable is required")
+                mock_logger.error.assert_called_with("CRITICAL_MAIN: OPENAI_API_KEY environment variable is required. Server cannot start.")
                 mock_run.assert_not_called()
 
 

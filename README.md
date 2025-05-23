@@ -6,8 +6,8 @@ A Model Context Protocol (MCP) server that provides OpenAI image generation capa
 
 - **OpenAI Image Integration**: Generate high-quality images using OpenAI's image models
 - **MCP-Compliant Server**: Built with the official Python MCP SDK using FastMCP
-- **Comprehensive Testing**: 61 tests covering all functionality with 100% pass rate
-- **Flexible Image Parameters**: Configure size, quality, background, format, and number of images
+- **Local File Management**: Automatic saving of generated images to local `generated_images/` directory
+- **DALL-E Model Support**: Full support for DALL-E 3 and DALL-E 2 with model-specific parameters
 - **Image Editing**: Edit existing images with prompts and optional masks
 - **Progress Tracking**: Real-time progress updates during image generation
 - **Robust Error Handling**: Comprehensive error handling with informative messages
@@ -16,44 +16,34 @@ A Model Context Protocol (MCP) server that provides OpenAI image generation capa
 
 ## 🛠️ Available Tools
 
-### `generate_image`
-Generate images using OpenAI's image models with comprehensive options.
-
-**Parameters:**
-- `prompt` (required): Description of the image to generate
-- `size`: Image dimensions - `1024x1024`, `1536x1024`, `1024x1536`, `auto` (default: `1024x1024`)
-- `quality`: Image quality - `high`, `medium`, `low`, `auto` (default: `high`)
-- `background`: Background type - `auto`, `transparent` (default: `auto`) [Note: Parameter accepted but ignored by GPT-Image-1]
-- `output_format`: Output format - `png`, `jpeg`, `webp` (default: `png`) [Note: Parameter accepted but ignored by GPT-Image-1]
-- `n`: Number of images to generate, 1-10 (default: `1`)
-
-**Returns:** Detailed information about generated images including URLs and metadata.
-
 ### `generate_and_download_image`
-Generate a single image and download the image data for processing.
+Generate and download images using OpenAI's DALL-E models, saving them to local files.
 
 **Parameters:**
 - `prompt` (required): Description of the image to generate
-- `size`: Image dimensions (same options as above)
-- `quality`: Image quality (same options as above)
-- `background`: Background type (same options as above)
-- `output_format`: Output format (same options as above)
+- `model`: Model to use - `dall-e-3`, `dall-e-2` (default: `dall-e-3`)
+- `size`: Image dimensions for DALL-E 3: `1024x1024`, `1792x1024`, `1024x1792` (default: `1024x1024`)
+- `quality`: Image quality for DALL-E 3: `standard`, `hd` (default: `standard`)
+- `style`: Style for DALL-E 3: `vivid`, `natural` (default: `vivid`)
+- `output_file_format`: File format - `png`, `jpeg`, `jpg` (default: `png`)
+- `n`: Number of images to generate - currently fixed to 1 (default: `1`)
 
-**Returns:** Image information with download status and size details.
+**Returns:** Information about generated images including local file paths and metadata.
 
 ### `edit_image`
-Edit an existing image using OpenAI's image editing capabilities.
+Edit an existing image using OpenAI's DALL-E 2 image editing capabilities.
 
 **Parameters:**
-- `image_url` (required): URL of the base image to edit
+- `image_path` (required): Local path to the base image file to edit
 - `prompt` (required): Description of the edits to make
-- `mask_url`: Optional URL of mask image for targeted editing (default: "")
-- `size`: Image dimensions - `1024x1024`, `1536x1024`, `1024x1536`, `auto` (default: `1024x1024`)
-- `quality`: Image quality - `high`, `medium`, `low`, `auto` (default: `high`)
-- `output_format`: Output format - `png`, `jpeg`, `webp` (default: `png`)
+- `mask_path`: Optional local path to mask image file for targeted editing
+- `model`: Model to use - currently only `dall-e-2` is supported (default: `dall-e-2`)
+- `size`: Image dimensions for DALL-E 2: `1024x1024`, `512x512`, `256x256` (default: `1024x1024`)
 - `n`: Number of edited images to generate, 1-10 (default: `1`)
+- `response_format`: Response format - `url`, `b64_json` (default: `b64_json`)
 
-**Returns:** Information about edited images including URLs and metadata.
+**Returns:** Information about edited images including URLs or base64 data.
+
 
 ## 🚀 Quick Start
 

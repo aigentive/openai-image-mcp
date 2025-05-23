@@ -1,239 +1,312 @@
-"""OpenAI image generation agent using the GPT-Image-1 model."""
-
+# Updated src/openai_image_mcp/image_agent.py
 import os
 import logging
 from typing import Dict, List, Optional, Any
-import asyncio
-import httpx
-from openai import AsyncOpenAI
+import requests
+from openai import OpenAI # type: ignore[import-untyped]
 from dotenv import load_dotenv
+import base64
+from datetime import datetime
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-
 class OpenAIImageAgent:
-    """Agent for generating images using OpenAI GPT-Image-1."""
-    
+    """Agent for generating and editing images using OpenAI DALL-E models."""
+
     def __init__(self) -> None:
         """Initialize the OpenAI image agent."""
         self.api_key = os.getenv("OPENAI_API_KEY")
         if not self.api_key:
+            logger.error("OPENAI_API_KEY environment variable is not set.")
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
-        # Create client with more conservative timeout settings
-        self.client = AsyncOpenAI(
+        self.client = OpenAI(
             api_key=self.api_key,
-            timeout=120.0  # 2 minutes timeout
+            timeout=180.0  # Increased timeout for API calls
         )
-    
-    async def generate_images(
+        logger.info("OpenAIImageAgent initialized with API key.")
+
+    def generate_images(
         self,
         prompt: str,
-        size: str = "1024x1024",
-        quality: str = "high",
-        n: int = 1
+        model: str = "dall-e-3", 
+        size: str = "1024x1024", 
+        quality: str = "standard", 
+        n: int = 1,
+        response_format: str = "b64_json", 
+        style: Optional[str] = "vivid" 
     ) -> List[Dict[str, Any]]:
         """
-        Generate images using OpenAI GPT-Image-1.
-        
-        Args:
-            prompt: The image generation prompt
-            size: Image size (1024x1024, 1536x1024, 1024x1536)
-            quality: Image quality (high, medium, low)
-            n: Number of images to generate (1-10)
-        
-        Returns:
-            List of image results with URLs and metadata (PNG format)
+        Generate images using OpenAI DALL-E.
+        Returns metadata including b64_json or URL.
         """
         try:
-            logger.info(f"Generating {n} image(s) with GPT-Image-1 for prompt: '{prompt}'")
-            logger.info(f"Parameters: size={size}, quality={quality}")
+            logger.info(f"Generating {n} image(s) with {model} for prompt: '{prompt}'")
+            logger.debug(f"Generation Params: model={model}, size={size}, quality={quality}, n={n}, response_format={response_format}, style={style}")
             
-            # Use basic parameters for gpt-image-1
-            params = {
-                "model": "gpt-image-1",
+            api_params: Dict[str, Any] = {
+                "model": model,
                 "prompt": prompt,
                 "size": size,
                 "quality": quality,
-                "n": n
+                "n": n,
+                "response_format": response_format,
             }
+            if style and model == "dall-e-3":
+                 api_params["style"] = style
             
-            logger.info(f"API call parameters: {params}")
-            
-            # Call with timeout - the client already has a timeout but this adds extra protection
-            response = await asyncio.wait_for(
-                self.client.images.generate(**params),
-                timeout=120.0  # 2 minutes
-            )
-            
-            logger.info("Received response from OpenAI API")
-            logger.info(f"Response type: {type(response)}")
-            logger.info(f"Response data length: {len(response.data) if hasattr(response, 'data') else 'No data attr'}")
+            logger.debug(f"Calling OpenAI images.generate with params: {api_params}")
+            response = self.client.images.generate(**api_params)
+            logger.info(f"OpenAI API call successful for image generation. Received {len(response.data)} items.")
             
             results = []
-            for i, image_data in enumerate(response.data):
-                # Debug logging to see what we get from the API
-                logger.info(f"Processing image {i+1}")
-                logger.info(f"Image data type: {type(image_data)}")
-                logger.info(f"Image data attributes: {dir(image_data)}")
-                logger.info(f"Image data: {image_data}")
-                
-                # Handle both URL and base64 responses
-                url = getattr(image_data, 'url', None)
-                b64_json = getattr(image_data, 'b64_json', None)
-                
-                # If we have base64 data, create a data URL
-                if b64_json and not url:
-                    url = f"data:image/png;base64,{b64_json}"
+            for i, image_data_obj in enumerate(response.data):
+                url = getattr(image_data_obj, 'url', None)
+                b64_json = getattr(image_data_obj, 'b64_json', None)
+                revised_prompt = getattr(image_data_obj, 'revised_prompt', prompt)
+
+                # Determine a format primarily for consistent metadata, actual saving format can differ.
+                determined_format = "png" # Default if b64_json is primary
+                if response_format == 'url' and url:
+                    try:
+                        filename_from_url = url.split('/')[-1].split('?')[0]
+                        if '.' in filename_from_url:
+                            ext = filename_from_url.split('.')[-1].lower()
+                            if ext in ["png", "jpeg", "jpg", "webp"]:
+                                determined_format = ext
+                        logger.debug(f"Inferred format from URL {url} as {determined_format}")
+                    except Exception as e_fmt:
+                        logger.warning(f"Could not infer format from URL {url}: {e_fmt}. Defaulting to png.")
                 
                 result = {
                     "url": url,
-                    "revised_prompt": getattr(image_data, 'revised_prompt', prompt),
-                    "size": size,
-                    "quality": quality,
-                    "format": "png",
+                    "b64_json": b64_json,
+                    "revised_prompt": revised_prompt,
+                    "requested_model": model,
+                    "requested_size": size, 
+                    "requested_quality": quality, 
+                    "requested_response_format": response_format,
+                    "determined_format": determined_format, 
+                    "requested_style": style if model == "dall-e-3" else None,
                     "index": i,
-                    "b64_json": b64_json  # Include base64 data if available
                 }
                 results.append(result)
-                logger.info(f"Generated image {i+1}: {result['url']}")
+                logger.debug(f"Image {i+1} metadata: URL {bool(url)}, b64_json {bool(b64_json)}, revised_prompt {bool(revised_prompt)}")
             
-            logger.info(f"Returning {len(results)} results")
+            logger.info(f"Returning {len(results)} metadata results from generate_images.")
             return results
             
-        except asyncio.TimeoutError:
-            logger.error("Image generation timed out after 2 minutes")
-            raise Exception("Image generation timed out - gpt-image-1 can take up to 2 minutes for complex prompts")
         except Exception as e:
-            logger.error(f"Error generating images: {e}")
-            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error in generate_images for prompt '{prompt}': {e}", exc_info=True)
             raise
     
-    async def download_image(self, url: str) -> bytes:
+    def _get_image_data_from_metadata(
+        self, 
+        image_metadata: Dict[str, Any]
+    ) -> Optional[bytes]:
         """
-        Download image from URL.
-        
-        Args:
-            url: Image URL
-            
-        Returns:
-            Image data as bytes
+        Internal helper to get image bytes from metadata (b64_json or URL).
         """
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                return response.content
-        except Exception as e:
-            logger.error(f"Error downloading image from {url}: {e}")
-            raise
-    
-    async def generate_and_download_images(
-        self,
-        prompt: str,
-        size: str = "1024x1024",
-        quality: str = "high",
-        n: int = 1
-    ) -> List[Dict[str, Any]]:
-        """
-        Generate images and download them as bytes.
-        
-        Args:
-            prompt: The image generation prompt
-            size: Image size
-            quality: Image quality
-            n: Number of images to generate
-            
-        Returns:
-            List of image results with URLs, metadata, and image data (PNG format)
-        """
-        results = await self.generate_images(prompt, size, quality, n)
-        
-        # Download image data
-        for result in results:
+        image_data_content: Optional[bytes] = None
+        index = image_metadata.get('index', 'N/A')
+        b64_json = image_metadata.get("b64_json")
+        url = image_metadata.get("url")
+
+        if b64_json:
+            logger.info(f"Decoding b64_json for image index {index}")
             try:
-                image_data = await self.download_image(result["url"])
-                result["data"] = image_data
-                result["size_bytes"] = len(image_data)
-            except Exception as e:
-                logger.warning(f"Failed to download image: {e}")
-                result["data"] = None
-                result["size_bytes"] = 0
+                image_data_content = base64.b64decode(b64_json)
+            except Exception as e_b64_decode:
+                logger.error(f"Error decoding b64_json for image index {index}: {e_b64_decode}", exc_info=True)
+                return None # Failed to decode
         
-        return results
-    
-    async def edit_image(
+        elif url and url.startswith("data:"):
+            logger.info(f"Decoding data URI for image index {index}: {url[:100]}...")
+            try:
+                header, encoded_data = url.split(",", 1)
+                if ";base64" not in header:
+                    logger.error(f"Data URI for image index {index} is not base64 encoded.")
+                    raise ValueError("Data URI is not base64 encoded")
+                image_data_content = base64.b64decode(encoded_data)
+            except Exception as e_data_uri:
+                logger.error(f"Could not decode data URI for image index {index}: {e_data_uri}", exc_info=True)
+                return None # Failed to decode
+        
+        elif url: # External URL
+            logger.info(f"Downloading image from external URL for index {index}: {url[:100]}...")
+            try:
+                response = requests.get(url, timeout=90) # Increased timeout for downloads
+                response.raise_for_status()
+                image_data_content = response.content
+                logger.info(f"Successfully downloaded image from {url[:100]}. Size: {len(image_data_content)} bytes.")
+            except Exception as e_download:
+                logger.error(f"Error downloading image from {url}: {e_download}", exc_info=True)
+                return None # Download failed
+        
+        else:
+            logger.warning(f"No b64_json or valid URL provided for image index {index} to get data.")
+            
+        return image_data_content
+
+    def generate_and_download_images(
         self,
-        image_url: str,
         prompt: str,
-        mask_url: Optional[str] = None,
+        model: str = "dall-e-3",
         size: str = "1024x1024",
-        quality: str = "high",
-        n: int = 1
+        quality: str = "standard",
+        n: int = 1,
+        style: Optional[str] = "vivid",
+        output_file_format: str = "png" # Desired format for the *saved file*
     ) -> List[Dict[str, Any]]:
         """
-        Edit an existing image using OpenAI GPT-Image-1.
+        Generates images, gets their data, and saves them to files.
+        Returns a list of result dictionaries, each including the 'filepath' if successfully saved.
+        """
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # src/openai_image_mcp -> src -> workspace_root
+        workspace_root = os.path.dirname(os.path.dirname(script_dir)) 
+        save_dir = os.path.join(workspace_root, "generated_images")
         
-        Args:
-            image_url: URL of the base image to edit
-            prompt: Description of the edits to make
-            mask_url: Optional URL of mask image for targeted editing
-            size: Image size (1024x1024, 1536x1024, 1024x1536)
-            quality: Image quality (high, medium, low)
-            n: Number of edited images to generate (1-10)
+        try:
+            os.makedirs(save_dir, exist_ok=True)
+            logger.info(f"Ensured 'generated_images' directory exists: {save_dir}")
+        except OSError as e_mkdir:
+            logger.error(f"Could not create/access directory {save_dir}: {e_mkdir}. Images may not be saved.", exc_info=True)
+
+        # Always request b64_json from generate_images for easier data handling.
+        # The actual content type of b64_json from DALL-E is typically PNG.
+        image_metadata_list = self.generate_images(
+            prompt=prompt, model=model, size=size, quality=quality, n=n, 
+            response_format="b64_json", style=style
+        )
         
-        Returns:
-            List of edited image results with URLs and metadata (PNG format)
+        final_results = []
+        for metadata in image_metadata_list:
+            # Initialize fields for this specific result dictionary
+            metadata["filepath"] = None 
+            metadata["saved_image_data_bytes"] = 0 
+            metadata["output_file_format"] = output_file_format # Record what we intended to save as
+
+            try:
+                image_data_bytes = self._get_image_data_from_metadata(metadata)
+
+                if image_data_bytes:
+                    metadata["saved_image_data_bytes"] = len(image_data_bytes)
+                    
+                    file_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+                    filename = f"image_{file_timestamp}_{metadata.get('index', 0)}.{output_file_format.lower()}"
+                    filepath = os.path.join(save_dir, filename)
+                    
+                    try:
+                        with open(filepath, "wb") as f:
+                            f.write(image_data_bytes)
+                        metadata["filepath"] = filepath 
+                        logger.info(f"Successfully saved image for index {metadata.get('index')} to: {filepath}")
+                    except IOError as e_io:
+                        logger.error(f"Failed to save image for index {metadata.get('index')} to {filepath}: {e_io}", exc_info=True)
+                else: 
+                    logger.warning(f"No image data content obtained for index {metadata.get('index', 'N/A')}, cannot save file.")
+
+            except Exception as e_proc:
+                logger.error(f"Error processing image for saving (index {metadata.get('index', 'N/A')}): {e_proc}", exc_info=True)
+            
+            final_results.append(metadata)
+        
+        return final_results
+    
+    def edit_image(
+        self,
+        image_path: str, 
+        prompt: str,
+        mask_path: Optional[str] = None, 
+        model: str = "dall-e-2", # DALL-E 2 is typically used for edits
+        size: str = "1024x1024", 
+        n: int = 1,
+        response_format: str = "b64_json"
+    ) -> List[Dict[str, Any]]:
+        """
+        Edit an existing image using a local image file and an optional local mask file.
+        OpenAI's edit endpoint (typically DALL-E 2) requires image and mask as files/bytes.
+        Returns metadata including b64_json or URL from OpenAI.
+        This method does NOT currently save the edited image back to a new file automatically.
         """
         try:
-            logger.info(f"Editing image with GPT-Image-1 for prompt: '{prompt}'")
-            
-            # Download the base image
-            base_image_data = await self.download_image(image_url)
-            
-            # Download mask if provided
-            mask_data = None
-            if mask_url:
-                mask_data = await self.download_image(mask_url)
-            
-            response = await self.client.images.edit(
-                model="gpt-image-1",
-                image=base_image_data,
-                mask=mask_data,
-                prompt=prompt,
-                size=size,
-                quality=quality,
-                n=n
-            )
-            
+            logger.info(f"Editing image at '{image_path}' with prompt: '{prompt}' using model {model}")
+
+            if not os.path.exists(image_path):
+                logger.error(f"Image file not found for editing: {image_path}")
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+
+            image_file_rb = None
+            mask_file_rb = None
+            try:
+                image_file_rb = open(image_path, "rb")
+                
+                if mask_path:
+                    if not os.path.exists(mask_path):
+                        logger.error(f"Mask file not found for editing: {mask_path}")
+                        raise FileNotFoundError(f"Mask file not found: {mask_path}")
+                    mask_file_rb = open(mask_path, "rb")
+
+                api_params: Dict[str, Any] = {
+                    "model": model,
+                    "image": image_file_rb, 
+                    "prompt": prompt,
+                    "size": size,
+                    "n": n,
+                    "response_format": response_format,
+                }
+                if mask_file_rb:
+                    api_params["mask"] = mask_file_rb
+                
+                logger.debug(f"Calling OpenAI images.edit with params: size={size}, n={n}, model={model}")
+                response = self.client.images.edit(**api_params) # type: ignore[arg-type]
+                logger.info("OpenAI image edit API call completed.")
+
+            finally: 
+                if image_file_rb:
+                    image_file_rb.close()
+                if mask_file_rb:
+                    mask_file_rb.close()
+                logger.debug("Closed image/mask files for edit operation.")
+
             results = []
-            for i, image_data in enumerate(response.data):
-                # Handle both URL and base64 responses
-                url = getattr(image_data, 'url', None)
-                b64_json = getattr(image_data, 'b64_json', None)
-                
-                # If we have base64 data, create a data URL
-                if b64_json and not url:
-                    url = f"data:image/png;base64,{b64_json}"
-                
+            for i, image_data_obj in enumerate(response.data):
+                url = getattr(image_data_obj, 'url', None)
+                b64_json = getattr(image_data_obj, 'b64_json', None)
+                revised_prompt = getattr(image_data_obj, 'revised_prompt', None)
+
+                determined_format = "png"
+                if response_format == 'url' and url:
+                    try:
+                        filename_from_url = url.split('/')[-1].split('?')[0]
+                        if '.' in filename_from_url:
+                            ext = filename_from_url.split('.')[-1].lower()
+                            if ext in ["png", "jpeg", "jpg", "webp"]:
+                                determined_format = ext
+                    except Exception:
+                        pass # Keep default png if inference fails
+
                 result = {
                     "url": url,
-                    "revised_prompt": getattr(image_data, 'revised_prompt', prompt),
-                    "original_image": image_url,
-                    "mask_image": mask_url,
-                    "size": size,
-                    "quality": quality,
-                    "format": "png",
+                    "b64_json": b64_json,
+                    "revised_prompt": revised_prompt,
+                    "original_image_path": image_path,
+                    "mask_image_path": mask_path,
+                    "requested_model": model,
+                    "requested_size": size, 
+                    "requested_response_format": response_format,
+                    "determined_format": determined_format,
                     "index": i,
-                    "b64_json": b64_json
                 }
                 results.append(result)
-                logger.info(f"Edited image {i+1}: {result['url']}")
+                logger.debug(f"Edited image {i+1} metadata: URL {bool(url)}, b64_json {bool(b64_json)}")
             
+            logger.info(f"Returning {len(results)} metadata results from edit_image.")
             return results
             
         except Exception as e:
-            logger.error(f"Error editing image: {e}")
-            raise
+            logger.error(f"Error in edit_image for '{image_path}': {e}", exc_info=True)
+            raise 

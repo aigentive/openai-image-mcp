@@ -11,7 +11,16 @@
       "Bash(python -m pytest tests/ -v)",
       "mcp__openai-image-mcp__generate_image",
       "WebFetch(domain:modelcontextprotocol.io)",
-      "Bash(python -m pytest tests/test_server.py -v)"
+      "Bash(python -m pytest tests/test_server.py -v)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "mcp__openai-image-mcp__generate_and_download_image",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
