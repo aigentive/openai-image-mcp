@@ -22,10 +22,10 @@ class OpenAIImageAgent:
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
-        # Add timeout configuration for gpt-image-1 (can take up to 2 minutes)
+        # Create client with more conservative timeout settings
         self.client = AsyncOpenAI(
             api_key=self.api_key,
-            timeout=180.0  # 3 minutes timeout
+            timeout=120.0  # 2 minutes timeout
         )
     
     async def generate_images(
@@ -33,8 +33,6 @@ class OpenAIImageAgent:
         prompt: str,
         size: str = "1024x1024",
         quality: str = "high",
-        background: str = "auto",
-        output_format: str = "png",
         n: int = 1
     ) -> List[Dict[str, Any]]:
         """
@@ -44,19 +42,16 @@ class OpenAIImageAgent:
             prompt: The image generation prompt
             size: Image size (1024x1024, 1536x1024, 1024x1536)
             quality: Image quality (high, medium, low)
-            background: Background type (auto, transparent)
-            output_format: Output format (png, jpeg, webp)
             n: Number of images to generate (1-10)
         
         Returns:
-            List of image results with URLs and metadata
+            List of image results with URLs and metadata (PNG format)
         """
         try:
             logger.info(f"Generating {n} image(s) with GPT-Image-1 for prompt: '{prompt}'")
-            logger.info(f"Parameters: size={size}, quality={quality}, background={background}, format={output_format}")
+            logger.info(f"Parameters: size={size}, quality={quality}")
             
-            # Add explicit timeout with asyncio
-            # Start with basic parameters and add others if they work
+            # Use basic parameters for gpt-image-1
             params = {
                 "model": "gpt-image-1",
                 "prompt": prompt,
@@ -65,20 +60,15 @@ class OpenAIImageAgent:
                 "n": n
             }
             
-            # Add optional parameters if they're not defaults
-            if background != "auto":
-                params["background"] = background
-            if output_format != "png":
-                params["output_format"] = output_format
-                
             logger.info(f"API call parameters: {params}")
             
+            # Call with timeout - the client already has a timeout but this adds extra protection
             response = await asyncio.wait_for(
                 self.client.images.generate(**params),
-                timeout=180.0  # 3 minutes
+                timeout=120.0  # 2 minutes
             )
             
-            logger.info(f"Received response from OpenAI API")
+            logger.info("Received response from OpenAI API")
             logger.info(f"Response type: {type(response)}")
             logger.info(f"Response data length: {len(response.data) if hasattr(response, 'data') else 'No data attr'}")
             
@@ -96,15 +86,14 @@ class OpenAIImageAgent:
                 
                 # If we have base64 data, create a data URL
                 if b64_json and not url:
-                    url = f"data:image/{output_format};base64,{b64_json}"
+                    url = f"data:image/png;base64,{b64_json}"
                 
                 result = {
                     "url": url,
                     "revised_prompt": getattr(image_data, 'revised_prompt', prompt),
                     "size": size,
                     "quality": quality,
-                    "background": background,
-                    "output_format": output_format,
+                    "format": "png",
                     "index": i,
                     "b64_json": b64_json  # Include base64 data if available
                 }
@@ -115,7 +104,7 @@ class OpenAIImageAgent:
             return results
             
         except asyncio.TimeoutError:
-            logger.error("Image generation timed out after 3 minutes")
+            logger.error("Image generation timed out after 2 minutes")
             raise Exception("Image generation timed out - gpt-image-1 can take up to 2 minutes for complex prompts")
         except Exception as e:
             logger.error(f"Error generating images: {e}")
@@ -146,8 +135,6 @@ class OpenAIImageAgent:
         prompt: str,
         size: str = "1024x1024",
         quality: str = "high",
-        background: str = "auto",
-        output_format: str = "png",
         n: int = 1
     ) -> List[Dict[str, Any]]:
         """
@@ -157,14 +144,12 @@ class OpenAIImageAgent:
             prompt: The image generation prompt
             size: Image size
             quality: Image quality
-            background: Background type
-            output_format: Output format
             n: Number of images to generate
             
         Returns:
-            List of image results with URLs, metadata, and image data
+            List of image results with URLs, metadata, and image data (PNG format)
         """
-        results = await self.generate_images(prompt, size, quality, background, output_format, n)
+        results = await self.generate_images(prompt, size, quality, n)
         
         # Download image data
         for result in results:
@@ -186,7 +171,6 @@ class OpenAIImageAgent:
         mask_url: Optional[str] = None,
         size: str = "1024x1024",
         quality: str = "high",
-        output_format: str = "png",
         n: int = 1
     ) -> List[Dict[str, Any]]:
         """
@@ -198,11 +182,10 @@ class OpenAIImageAgent:
             mask_url: Optional URL of mask image for targeted editing
             size: Image size (1024x1024, 1536x1024, 1024x1536)
             quality: Image quality (high, medium, low)
-            output_format: Output format (png, jpeg, webp)
             n: Number of edited images to generate (1-10)
         
         Returns:
-            List of edited image results with URLs and metadata
+            List of edited image results with URLs and metadata (PNG format)
         """
         try:
             logger.info(f"Editing image with GPT-Image-1 for prompt: '{prompt}'")
@@ -222,7 +205,6 @@ class OpenAIImageAgent:
                 prompt=prompt,
                 size=size,
                 quality=quality,
-                output_format=output_format,
                 n=n
             )
             
@@ -234,7 +216,7 @@ class OpenAIImageAgent:
                 
                 # If we have base64 data, create a data URL
                 if b64_json and not url:
-                    url = f"data:image/{output_format};base64,{b64_json}"
+                    url = f"data:image/png;base64,{b64_json}"
                 
                 result = {
                     "url": url,
@@ -243,7 +225,7 @@ class OpenAIImageAgent:
                     "mask_image": mask_url,
                     "size": size,
                     "quality": quality,
-                    "output_format": output_format,
+                    "format": "png",
                     "index": i,
                     "b64_json": b64_json
                 }

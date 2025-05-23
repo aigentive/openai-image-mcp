@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(poetry show:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(poetry add:*)",
+      "Bash(poetry run:*)",
+      "Bash(LOG_LEVEL=DEBUG poetry run python -m openai_image_mcp.server)",
+      "Bash(rm:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "mcp__openai-image-mcp__generate_image",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "Bash(python -m pytest tests/test_server.py -v)"
+    ],
+    "deny": []
+  }
+}

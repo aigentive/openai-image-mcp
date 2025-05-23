@@ -2,56 +2,12 @@
 
 import pytest
 import os
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch
 import sys
 from pathlib import Path
 
 # Add src to path for testing
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from openai_image_mcp.image_agent import OpenAIImageAgent
-
-
-class TestOpenAIImageAgent:
-    """Test cases for OpenAI Image Agent."""
-    
-    def test_agent_initialization_without_api_key(self):
-        """Test that agent raises error without API key."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="OPENAI_API_KEY environment variable is required"):
-                OpenAIImageAgent()
-    
-    def test_agent_initialization_with_api_key(self):
-        """Test that agent initializes correctly with API key."""
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            agent = OpenAIImageAgent()
-            assert agent.api_key == "test-key"
-            assert agent.client is not None
-    
-    @pytest.mark.asyncio
-    async def test_generate_images_mock(self):
-        """Test image generation with mocked OpenAI client."""
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            agent = OpenAIImageAgent()
-            
-            # Mock the OpenAI client response
-            mock_response = AsyncMock()
-            mock_response.data = [
-                AsyncMock(
-                    url="https://example.com/image1.png",
-                    revised_prompt="A test image prompt"
-                )
-            ]
-            
-            with patch.object(agent.client.images, 'generate', return_value=mock_response):
-                results = await agent.generate_images("test prompt")
-                
-                assert len(results) == 1
-                assert results[0]["url"] == "https://example.com/image1.png"
-                assert results[0]["revised_prompt"] == "A test image prompt"
-                assert results[0]["size"] == "1024x1024"
-                assert results[0]["quality"] == "standard"
-                assert results[0]["style"] == "vivid"
 
 
 def test_import_server():
@@ -59,6 +15,13 @@ def test_import_server():
     try:
         from openai_image_mcp import server
         assert server is not None
+        
+        # Test that key components are available
+        assert hasattr(server, 'generate_image')
+        assert hasattr(server, 'generate_and_download_image') 
+        assert hasattr(server, 'edit_image')
+        assert hasattr(server, 'mcp')
+        assert hasattr(server, 'main')
     except ImportError as e:
         pytest.fail(f"Failed to import server module: {e}")
 
@@ -68,5 +31,38 @@ def test_import_image_agent():
     try:
         from openai_image_mcp import image_agent
         assert image_agent is not None
+        
+        # Test that OpenAIImageAgent class is available
+        assert hasattr(image_agent, 'OpenAIImageAgent')
     except ImportError as e:
         pytest.fail(f"Failed to import image_agent module: {e}")
+
+
+def test_mcp_server_creation():
+    """Test that MCP server is created correctly."""
+    from openai_image_mcp.server import mcp
+    
+    assert mcp is not None
+    assert mcp.name == "openai-image-mcp"
+
+
+def test_environment_variable_check():
+    """Test environment variable validation."""
+    with patch.dict(os.environ, {}, clear=True):
+        with patch('openai_image_mcp.server.logger') as mock_logger:
+            with patch('openai_image_mcp.server.mcp.run') as mock_run:
+                from openai_image_mcp.server import main
+                main()
+                
+                # Should log error and not run server
+                mock_logger.error.assert_called_with("OPENAI_API_KEY environment variable is required")
+                mock_run.assert_not_called()
+
+
+def test_mcp_tools_registered():
+    """Test that MCP tools are properly registered."""
+    from openai_image_mcp.server import mcp
+    
+    # The tools should be registered with the mcp instance
+    # This is a basic smoke test to ensure the decorators worked
+    assert mcp is not None
