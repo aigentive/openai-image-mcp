@@ -158,22 +158,27 @@ class OpenAIImageAgent:
         quality: str = "standard",
         n: int = 1,
         style: Optional[str] = "vivid",
-        output_file_format: str = "png" # Desired format for the *saved file*
+        output_file_format: str = "png", # Desired format for the *saved file*
+        save_paths: Optional[List[str]] = None, # List of organized save paths
+        file_organizer: Optional[Any] = None # FileOrganizer instance for metadata saving
     ) -> List[Dict[str, Any]]:
         """
         Generates images, gets their data, and saves them to files.
+        If save_paths is provided, uses organized paths. Otherwise falls back to default location.
         Returns a list of result dictionaries, each including the 'filepath' if successfully saved.
         """
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        # src/openai_image_mcp -> src -> workspace_root
-        workspace_root = os.path.dirname(os.path.dirname(script_dir)) 
-        save_dir = os.path.join(workspace_root, "generated_images")
-        
-        try:
-            os.makedirs(save_dir, exist_ok=True)
-            logger.info(f"Ensured 'generated_images' directory exists: {save_dir}")
-        except OSError as e_mkdir:
-            logger.error(f"Could not create/access directory {save_dir}: {e_mkdir}. Images may not be saved.", exc_info=True)
+        # Fallback to default location if no organized paths provided
+        if save_paths is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            # src/openai_image_mcp -> src -> workspace_root
+            workspace_root = os.path.dirname(os.path.dirname(script_dir)) 
+            save_dir = os.path.join(workspace_root, "generated_images")
+            
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+                logger.info(f"Ensured 'generated_images' directory exists: {save_dir}")
+            except OSError as e_mkdir:
+                logger.error(f"Could not create/access directory {save_dir}: {e_mkdir}. Images may not be saved.", exc_info=True)
 
         # Always request b64_json from generate_images for easier data handling.
         # The actual content type of b64_json from DALL-E is typically PNG.
@@ -183,7 +188,7 @@ class OpenAIImageAgent:
         )
         
         final_results = []
-        for metadata in image_metadata_list:
+        for i, metadata in enumerate(image_metadata_list):
             # Initialize fields for this specific result dictionary
             metadata["filepath"] = None 
             metadata["saved_image_data_bytes"] = 0 
@@ -195,15 +200,40 @@ class OpenAIImageAgent:
                 if image_data_bytes:
                     metadata["saved_image_data_bytes"] = len(image_data_bytes)
                     
-                    file_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-                    filename = f"image_{file_timestamp}_{metadata.get('index', 0)}.{output_file_format.lower()}"
-                    filepath = os.path.join(save_dir, filename)
+                    # Use organized save path if provided, otherwise generate default filename
+                    if save_paths and i < len(save_paths):
+                        filepath = save_paths[i]
+                        # Ensure directory exists for organized path
+                        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                    else:
+                        # Fallback to default naming in save_dir
+                        file_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+                        filename = f"image_{file_timestamp}_{metadata.get('index', 0)}.{output_file_format.lower()}"
+                        filepath = os.path.join(save_dir, filename)
                     
                     try:
                         with open(filepath, "wb") as f:
                             f.write(image_data_bytes)
                         metadata["filepath"] = filepath 
                         logger.info(f"Successfully saved image for index {metadata.get('index')} to: {filepath}")
+                        
+                        # Save metadata if file_organizer is provided
+                        if file_organizer:
+                            try:
+                                image_metadata = {
+                                    "original_prompt": prompt,
+                                    "revised_prompt": metadata.get("revised_prompt", prompt),
+                                    "model": model,
+                                    "size": size,
+                                    "quality": quality,
+                                    "style": style,
+                                    "output_format": output_file_format,
+                                    "file_size_bytes": len(image_data_bytes)
+                                }
+                                file_organizer.save_image_metadata(filepath, image_metadata)
+                            except Exception as e_meta:
+                                logger.warning(f"Failed to save metadata for {filepath}: {e_meta}")
+                                
                     except IOError as e_io:
                         logger.error(f"Failed to save image for index {metadata.get('index')} to {filepath}: {e_io}", exc_info=True)
                 else: 

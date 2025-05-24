@@ -167,16 +167,20 @@ def generate_image(
             logger.warning(f"DALL-E 3 doesn't support n>1, setting n=1")
             n = 1
 
-        # Generate save path
-        if save_path is None:
-            save_path = organizer.get_save_path(
-                use_case="general",
-                filename_prefix="generated",
-                file_format=selected_format
-            )
+        # This section is now handled above with save_paths generation
             
         agent_instance = get_agent()
         
+        # Generate organized save paths for each image
+        save_paths = []
+        for i in range(n):
+            path = organizer.get_save_path(
+                use_case="general",
+                filename_prefix=f"generated_{i+1}",
+                file_format=selected_format
+            )
+            save_paths.append(path)
+
         # Handle different models appropriately
         if selected_model == "gpt-image-1":
             # For GPT-Image-1, we'll need to use the existing generate_and_download_images
@@ -188,7 +192,9 @@ def generate_image(
                 quality=selected_quality,
                 style=selected_style if selected_model == "dall-e-3" else None,
                 output_file_format=selected_format.lower(),
-                n=n
+                n=n,
+                save_paths=save_paths,
+                file_organizer=organizer
             )
         else:
             results = agent_instance.generate_and_download_images(
@@ -198,7 +204,9 @@ def generate_image(
                 quality=selected_quality, 
                 style=selected_style if selected_model == "dall-e-3" else None,
                 output_file_format=selected_format.lower(),
-                n=n
+                n=n,
+                save_paths=save_paths,
+                file_organizer=organizer
             )
         
         if not results:

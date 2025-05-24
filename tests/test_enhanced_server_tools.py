@@ -69,8 +69,10 @@ class TestEnhancedServerTools:
         
         # Verify method calls
         self.mock_selector.select_model_and_params.assert_called_once()
-        self.mock_organizer.get_save_path.assert_called_once()
-        self.mock_agent.generate_and_download_images.assert_called_once()
+        self.mock_organizer.get_save_path.assert_called()  # Called multiple times for save_paths
+        call_args = self.mock_agent.generate_and_download_images.call_args
+        assert "save_paths" in call_args[1]  # Verify save_paths parameter is passed
+        assert "file_organizer" in call_args[1]  # Verify file_organizer parameter is passed
     
     @patch('src.openai_image_mcp.server.get_model_selector')
     @patch('src.openai_image_mcp.server.get_file_organizer')
