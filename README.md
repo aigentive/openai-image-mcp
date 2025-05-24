@@ -1,49 +1,161 @@
 # OpenAI Image MCP Server
 
-A Model Context Protocol (MCP) server that provides OpenAI image generation capabilities to LLM applications like Claude Desktop. Generate, edit, and download high-quality images using OpenAI's powerful image models.
+A Model Context Protocol (MCP) server that provides comprehensive OpenAI image generation capabilities to LLM applications like Claude Desktop. Generate, edit, and create images using OpenAI's powerful image models with intelligent model selection and organized file management.
 
 ## 🌟 Features
 
-- **OpenAI Image Integration**: Generate high-quality images using OpenAI's image models
-- **MCP-Compliant Server**: Built with the official Python MCP SDK using FastMCP
-- **Local File Management**: Automatic saving of generated images to local `generated_images/` directory
-- **DALL-E Model Support**: Full support for DALL-E 3 and DALL-E 2 with model-specific parameters
-- **Image Editing**: Edit existing images with prompts and optional masks
-- **Progress Tracking**: Real-time progress updates during image generation
-- **Robust Error Handling**: Comprehensive error handling with informative messages
-- **Image Download**: Optional image data download for further processing
-- **Async Support**: Full async/await support for optimal performance
+- **🤖 Smart Model Selection**: Automatic selection of optimal models (GPT-Image-1, DALL-E 3, DALL-E 2) based on use case
+- **📁 Organized File Management**: Automatic categorization and metadata tracking for all generated images  
+- **🎯 Specialized Tools**: Purpose-built tools for products, UI assets, batch processing, and iterative improvement
+- **💰 Cost Optimization**: Budget-aware defaults and transparent cost estimation
+- **🔧 MCP-Compliant**: Built with the official Python MCP SDK using FastMCP
+- **📊 Progress Tracking**: Real-time feedback and structured responses
+- **🛡️ Robust Error Handling**: Comprehensive validation and informative error messages
+- **🎨 Multiple Edit Modes**: Inpainting, outpainting, variations, and style transfer
 
 ## 🛠️ Available Tools
 
-### `generate_and_download_image`
-Generate and download images using OpenAI's DALL-E models, saving them to local files.
+### Core Tools
+
+#### `generate_image`
+General-purpose image generation with intelligent model selection.
+
+**When to use:** Default choice for most image generation needs
 
 **Parameters:**
-- `prompt` (required): Description of the image to generate
-- `model`: Model to use - `dall-e-3`, `dall-e-2` (default: `dall-e-3`)
-- `size`: Image dimensions for DALL-E 3: `1024x1024`, `1792x1024`, `1024x1792` (default: `1024x1024`)
-- `quality`: Image quality for DALL-E 3: `standard`, `hd` (default: `standard`)
-- `style`: Style for DALL-E 3: `vivid`, `natural` (default: `vivid`)
-- `output_file_format`: File format - `png`, `jpeg`, `jpg` (default: `png`)
-- `n`: Number of images to generate - currently fixed to 1 (default: `1`)
+- `prompt` (required): Text description of desired image
+- `model`: "auto" | "gpt-image-1" | "dall-e-3" | "dall-e-2" (default: "auto")
+- `quality`: "auto" | "low" | "medium" | "high" | "hd" (default: "auto")
+- `size`: "auto" | specific dimensions (default: "auto")
+- `background`: "auto" | "transparent" (default: "auto")
+- `format`: "png" | "jpeg" | "webp" (default: "png")
 
-**Returns:** Information about generated images including local file paths and metadata.
+**Examples:**
+```python
+# Professional product photo
+generate_image("professional photo of wireless headphones", quality="high")
 
-### `edit_image`
-Edit an existing image using OpenAI's DALL-E 2 image editing capabilities.
+# Logo with transparent background  
+generate_image("minimal tech startup logo", background="transparent")
+
+# Artistic illustration
+generate_image("children's book illustration of a friendly dragon", model="dall-e-3")
+```
+
+#### `edit_image_advanced`
+Sophisticated image editing with multiple modes.
+
+**When to use:** For modifying existing images with advanced control
 
 **Parameters:**
-- `image_path` (required): Local path to the base image file to edit
-- `prompt` (required): Description of the edits to make
-- `mask_path`: Optional local path to mask image file for targeted editing
-- `model`: Model to use - currently only `dall-e-2` is supported (default: `dall-e-2`)
-- `size`: Image dimensions for DALL-E 2: `1024x1024`, `512x512`, `256x256` (default: `1024x1024`)
-- `n`: Number of edited images to generate, 1-10 (default: `1`)
-- `response_format`: Response format - `url`, `b64_json` (default: `b64_json`)
+- `image_path` (required): Path to source image
+- `prompt` (required): Edit instructions
+- `mode`: "inpaint" | "outpaint" | "variation" | "style_transfer" (default: "inpaint")
+- `mask_path`: Path to mask image (required for inpaint mode)
+- `model`: "auto" | "gpt-image-1" | "dall-e-2" (default: "auto")
 
-**Returns:** Information about edited images including URLs or base64 data.
+**Examples:**
+```python
+# Remove object with mask
+edit_image_advanced("photo.jpg", "remove the car", mode="inpaint", mask_path="car_mask.png")
 
+# Style transformation
+edit_image_advanced("photo.jpg", "make it look like a watercolor painting", mode="style_transfer")
+
+# Create variation
+edit_image_advanced("photo.jpg", "same scene, different lighting", mode="variation")
+```
+
+### Specialized Tools
+
+#### `generate_product_image`
+Optimized for e-commerce and product photography.
+
+**When to use:** E-commerce, catalogs, product showcases
+
+**Parameters:**
+- `product_description` (required): Detailed product description
+- `background_type`: "transparent" | "white" | "lifestyle" | "custom" (default: "white")
+- `angle`: "front" | "side" | "top" | "45deg" | "multiple" (default: "front")
+- `lighting`: "studio" | "natural" | "dramatic" (default: "studio")
+- `batch_count`: Number of variations 1-4 (default: 1)
+
+#### `generate_ui_asset`
+Create UI/UX design assets optimized for web and apps.
+
+**When to use:** Web/app design, UI components, interface elements
+
+**Parameters:**
+- `asset_type` (required): "icon" | "illustration" | "hero" | "background"
+- `description` (required): Asset details
+- `theme`: "light" | "dark" | "auto" (default: "auto")
+- `style_preset`: "flat" | "gradient" | "3d" | "outline" (default: "flat")
+
+#### `batch_generate`
+Efficient bulk image generation with cost optimization.
+
+**When to use:** Multiple related images, A/B testing, content series
+
+**Parameters:**
+- `prompts` (required): JSON array of prompts or newline-separated
+- `variations_per_prompt`: 1-3 variations each (default: 1)
+- `consistent_style`: Style to maintain across batch
+- `model`: "auto" | specific model (default: "auto")
+
+#### `analyze_and_regenerate`
+Iterative image improvement with structured feedback.
+
+**When to use:** When initial results need refinement
+
+**Parameters:**
+- `image_path` (required): Current image to improve
+- `requirements` (required): What needs improvement
+- `preserve_elements`: Elements to keep unchanged
+- `max_iterations`: Iteration limit 1-5 (default: 3)
+
+### Utility Tools
+
+#### `get_usage_guide`
+Retrieve comprehensive LLM usage guidelines and tool selection advice.
+
+**When to use:** When you need guidance on tool selection or usage patterns
+
+## 🧠 Smart Model Selection
+
+The server automatically selects the optimal model based on your requirements:
+
+| Use Case | Auto-Selected Model | Quality | Rationale |
+|----------|-------------------|---------|-----------|
+| Text in images | GPT-Image-1 | High | Superior text rendering |
+| Product photos | GPT-Image-1 | High | Best realism and detail |
+| UI assets | GPT-Image-1 | Medium | Clean graphics, transparency |
+| Artistic content | DALL-E 3 | HD | Larger sizes, artistic styles |
+| Budget/batch | DALL-E 2 | Standard | Cost optimization |
+
+## 📁 File Organization
+
+Generated images are automatically organized:
+
+```
+workspace/
+├── generated_images/
+│   ├── general/              # General purpose images
+│   ├── products/             # Product photography
+│   │   └── [product_name]/   # Organized by product
+│   ├── ui_assets/            # UI/UX design assets
+│   │   ├── icons/
+│   │   ├── illustrations/
+│   │   ├── heroes/
+│   │   └── backgrounds/
+│   ├── batch_generations/    # Batch processing results
+│   │   └── [batch_id]/
+│   ├── edited_images/        # Edited/modified images
+│   └── variations/           # Image variations
+```
+
+Each image includes metadata with generation parameters, costs, and timestamps.
+
+> **Note:** The `generated_images/` directory is automatically created and excluded from version control (.gitignore).
 
 ## 🚀 Quick Start
 
@@ -51,7 +163,7 @@ Edit an existing image using OpenAI's DALL-E 2 image editing capabilities.
 
 ```bash
 # Clone the repository
-git clone https://github.com/aigentive/openai-image-mcp.git
+git clone https://github.com/your-username/openai-image-mcp.git
 cd openai-image-mcp
 
 # Install Poetry if not already installed
@@ -59,50 +171,29 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 # Install dependencies
 poetry install
-
-# Copy environment template
-cp .env.example .env
 ```
 
 ### 2. Configuration
 
-Edit the `.env` file and add your OpenAI API key:
+Set your OpenAI API key:
 
 ```bash
-nano .env
-```
-
-```env
-OPENAI_API_KEY=your_openai_api_key_here
+export OPENAI_API_KEY="your_openai_api_key_here"
 ```
 
 ### 3. Test the Server
 
-Test the server locally:
-
 ```bash
+# Test locally
 poetry run python examples/test_client.py
-```
 
-Or run the server directly:
-
-```bash
+# Or run the server directly
 poetry run python -m openai_image_mcp.server
 ```
 
 ### 4. Integration with Claude Desktop
 
-Add the server to your Claude Desktop MCP configuration:
-
-1. Open Claude Desktop settings
-2. Navigate to the MCP configuration section  
-3. Copy the example configuration file and customize it:
-
-```bash
-cp mcp-config.json.example mcp-config.json
-```
-
-4. Edit the configuration file with your specific paths and API key:
+Add to your Claude Desktop MCP configuration:
 
 ```json
 {
@@ -110,7 +201,7 @@ cp mcp-config.json.example mcp-config.json
     "openai-image-mcp": {
       "command": "poetry",
       "args": ["run", "python", "-m", "openai_image_mcp.server"],
-      "cwd": "/path/to/your/openai-image-mcp",
+      "cwd": "/path/to/openai-image-mcp",
       "env": {
         "OPENAI_API_KEY": "your_openai_api_key_here"
       }
@@ -119,197 +210,164 @@ cp mcp-config.json.example mcp-config.json
 }
 ```
 
-5. Import this configuration into Claude Desktop
-
 ## 📖 Usage Examples
 
-### Basic Image Generation
+### Smart Auto Mode (Recommended)
 
 ```python
-# In Claude Desktop or through MCP client
-generate_image(
-    prompt="A futuristic cityscape at sunset with flying cars",
-    size="1024x1024",
-    quality="high",
-    background="auto",
-    output_format="png"
+# The server automatically selects the best model and parameters
+generate_image("professional headshot of a business executive")
+# → Uses GPT-Image-1, high quality, optimized settings
+
+generate_image("abstract artistic painting with vibrant colors")  
+# → Uses DALL-E 3, HD quality, artistic optimization
+
+generate_image("simple app icon with rounded corners", background="transparent")
+# → Uses GPT-Image-1, medium quality, PNG with transparency
+```
+
+### Product Photography Workflow
+
+```python
+# Generate multiple product shots
+generate_product_image(
+    product_description="wireless bluetooth headphones",
+    background_type="transparent", 
+    angle="multiple",
+    batch_count=3
+)
+# → Creates organized product folder with multiple angles
+```
+
+### UI Design Workflow
+
+```python
+# Create app icons
+generate_ui_asset(
+    asset_type="icon",
+    description="shopping cart with rounded modern design",
+    style_preset="flat",
+    theme="light"
+)
+
+# Generate hero images
+generate_ui_asset(
+    asset_type="hero", 
+    description="modern dashboard interface mockup",
+    dimensions="1200x600",
+    theme="dark"
 )
 ```
 
-### High-Quality Portrait with Transparent Background
+### Batch Content Creation
 
 ```python
-generate_image(
-    prompt="Professional portrait of a software engineer working on AI",
-    size="1024x1536",
-    quality="high",
-    background="transparent",
-    output_format="png"
+# Generate series with consistent style
+batch_generate(
+    prompts='["red sports car", "blue mountain bike", "green sailboat"]',
+    consistent_style="minimalist vector illustration",
+    variations_per_prompt=2
 )
 ```
 
-### Multiple Variations
+### Iterative Improvement
 
 ```python
-generate_image(
-    prompt="Abstract art representing the concept of artificial intelligence",
-    size="1024x1024",
-    quality="high",
-    background="auto",
-    output_format="webp",
-    n=3
-)
-```
-
-### Image Editing
-
-```python
-edit_image(
-    image_url="https://example.com/my-image.png",
-    prompt="Add a sunset in the background and change the colors to warmer tones",
-    size="1024x1024",
-    quality="high",
-    output_format="png"
+# Improve image quality iteratively
+analyze_and_regenerate(
+    image_path="draft_logo.png",
+    requirements="make more professional and add subtle drop shadow",
+    preserve_elements="colors and overall shape",
+    max_iterations=3
 )
 ```
 
 ## 🏗️ Architecture
 
-The project is structured as follows:
-
 ```
 openai-image-mcp/
 ├── src/
 │   └── openai_image_mcp/
-│       ├── __init__.py
-│       ├── server.py          # FastMCP server implementation
-│       └── image_agent.py     # OpenAI image integration
-├── tests/                     # Comprehensive test suite (61 tests)
-│   ├── test_image_agent.py    # Agent unit tests
-│   ├── test_server_tools.py   # Server tool tests
-│   ├── test_integration.py    # Integration tests
-│   ├── test_error_handling.py # Error handling tests
-│   └── test_server.py         # Basic server tests
-├── examples/
-│   └── test_client.py         # Test client for development
-├── .env.example               # Environment variables template
-├── mcp-config.json.example    # Claude Desktop configuration template
-└── pyproject.toml            # Poetry configuration
+│       ├── server.py           # Enhanced MCP server with 6 tools
+│       ├── image_agent.py      # OpenAI API integration
+│       ├── model_selector.py   # Intelligent model selection
+│       └── file_organizer.py   # Structured file management
+├── tests/                      # Comprehensive test suite
+│   ├── test_model_selector.py  # Model selection tests
+│   ├── test_file_organizer.py  # File organization tests
+│   └── test_enhanced_server_tools.py  # Enhanced tool tests
+├── LLM.md                      # LLM usage guidelines
+└── examples/
 ```
 
-### Key Components
+## 🧪 Testing
 
-- **FastMCP Server**: Modern MCP server implementation with lifespan management
-- **OpenAI Image Agent**: Handles OpenAI API interactions with async support
-- **Progress Tracking**: Real-time feedback during image generation
-- **Comprehensive Testing**: 61 tests covering all functionality and edge cases
-- **Error Handling**: Robust error handling and validation
-
-## 🔧 Development
-
-### Setting up Development Environment
-
-```bash
-# Clone and setup
-git clone https://github.com/aigentive/openai-image-mcp.git
-cd openai-image-mcp
-
-# Install dependencies
-poetry install
-
-# Set up environment
-cp .env.example .env
-# Edit .env to add your OpenAI API key
-
-# Run tests to verify installation
-poetry run pytest
-
-# Run test client
-poetry run python examples/test_client.py
-
-# Run with development logging
-LOG_LEVEL=DEBUG poetry run python -m openai_image_mcp.server
-```
-
-### Testing
-
-The project includes a comprehensive test suite with 61 tests:
+Run the comprehensive test suite:
 
 ```bash
 # Run all tests
 poetry run pytest
 
-# Run tests with coverage
+# Test specific components
+poetry run pytest tests/test_model_selector.py
+poetry run pytest tests/test_file_organizer.py
+poetry run pytest tests/test_enhanced_server_tools.py
+
+# Run with coverage
 poetry run pytest --cov=src/openai_image_mcp
-
-# Run specific test category
-poetry run pytest tests/test_image_agent.py      # Unit tests
-poetry run pytest tests/test_server_tools.py    # Server tool tests
-poetry run pytest tests/test_integration.py     # Integration tests
-poetry run pytest tests/test_error_handling.py  # Error handling tests
 ```
 
-### Code Quality
+## 💡 Best Practices
 
-The project uses:
-- **Black**: Code formatting
-- **isort**: Import sorting  
-- **mypy**: Type checking
-- **pytest**: Testing with asyncio support
+### For LLMs
 
-```bash
-# Format code
-poetry run black src/ tests/ examples/
+1. **Use "auto" mode** - Let the server select optimal settings
+2. **Be specific in prompts** - Detailed descriptions yield better results
+3. **Choose specialized tools** - Use purpose-built tools for better results
+4. **Consider cost** - Use batch processing for multiple related images
 
-# Sort imports
-poetry run isort src/ tests/ examples/
+### For Developers
 
-# Type checking
-poetry run mypy src/
-
-# Run full quality check
-poetry run pytest && poetry run mypy src/ && poetry run black --check src/
-```
+1. **Check metadata** - All images include generation metadata
+2. **Handle errors gracefully** - The server provides detailed error information
+3. **Monitor costs** - Use the cost estimation features
+4. **Organize files** - Leverage the automatic categorization system
 
 ## 📋 Requirements
 
 - Python 3.10+
-- OpenAI API key
-- Poetry (for dependency management)
+- OpenAI API key with image generation access
+- Poetry for dependency management
 
 ## 🔐 Environment Variables
 
 - `OPENAI_API_KEY` (required): Your OpenAI API key
-- `OPENAI_ORG_ID` (optional): Your OpenAI organization ID
 - `LOG_LEVEL` (optional): Logging level (default: INFO)
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-1. **"OPENAI_API_KEY not found"**
-   - Ensure your `.env` file contains a valid OpenAI API key
-   - Check that the `.env` file is in the project root directory
+1. **"Invalid model" errors**
+   - The server auto-selects models; use "auto" for model parameter
 
-2. **"Module not found" errors**
-   - Run `poetry install` to install dependencies
-   - Ensure you're using the correct Python path in MCP configuration
+2. **"Quality not supported" errors**  
+   - Different models support different quality levels; use "auto" for quality
 
-3. **"Permission denied" on setup.sh**
-   - Run `chmod +x setup.sh` to make the script executable
+3. **File organization issues**
+   - The server creates directories automatically; ensure write permissions
 
-4. **Server not responding in Claude Desktop**
-   - Check the MCP configuration path is correct
-   - Verify the server starts successfully when run directly
-   - Check Claude Desktop logs for error messages
+4. **Cost concerns**
+   - Use "auto" quality and batch processing for cost optimization
+   - Check cost estimates in responses
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+MIT License
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome! Please submit a Pull Request.
 
 ## 🔗 Related Projects
 

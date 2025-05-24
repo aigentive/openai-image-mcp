@@ -139,7 +139,8 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# Generated images
+# Generated images and related files
+generated_images/
 images/
 *.png
 *.jpg
@@ -147,4 +148,13 @@ images/
 *.gif
 *.bmp
 *.webp
-mcp-config.json
+*_metadata.json
+
+# MCP configuration (may contain API keys)
+mcp-config.private.json
+
+# Temporary and debug files
+debug.txt
+debug_*.txt
+debug_*.py
+*_debug.txt

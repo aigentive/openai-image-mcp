@@ -17,7 +17,7 @@ def test_import_server():
         assert server is not None
         
         # Test that key components are available
-        assert hasattr(server, 'generate_and_download_image') 
+        assert hasattr(server, 'generate_image') 
         assert hasattr(server, 'edit_image')
         assert hasattr(server, 'mcp')
         assert hasattr(server, 'main')

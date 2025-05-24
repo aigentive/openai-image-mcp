@@ -20,7 +20,9 @@
       "Bash(git add:*)",
       "Bash(git restore:*)",
       "WebFetch(domain:platform.openai.com)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }
