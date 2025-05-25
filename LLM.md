@@ -328,7 +328,7 @@ generate_image_in_session(session_id, "perfect! now make a horizontal version")
 ### Design System Development
 ```python
 # Create session for design system
-create_image_session("Mobile app UI design system", session_name="AppUI v2")
+create_image_session("Mobile app UI design system", session_name="AppUI Design")
 
 # Generate primary components
 generate_image_in_session(session_id, "primary button with rounded corners")
@@ -558,7 +558,7 @@ get_usage_guide()
 
 ## 🚀 Getting Started
 
-**New to v2.0?** Start with a simple session:
+**New to sessions?** Start with a simple session:
 
 ```python
 # Create your first session

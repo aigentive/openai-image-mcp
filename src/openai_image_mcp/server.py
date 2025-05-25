@@ -950,7 +950,7 @@ def get_usage_guide() -> Dict[str, Any]:
             
             return {
                 "success": True,
-                "version": "2.0",
+                "version": "latest",
                 "architecture": "Session-based Conversational Image Generation",
                 "guide_content": guide_content,
                 "last_updated": "May 25, 2025",
@@ -983,7 +983,7 @@ def get_usage_guide() -> Dict[str, Any]:
                 "error": "Usage guide file not found",
                 "error_type": "file_not_found",
                 "fallback_info": {
-                    "version": "2.0",
+                    "version": "latest",
                     "key_tools": [
                         "create_image_session - Start conversational session",
                         "generate_image_in_session - Generate with context",
@@ -1156,7 +1156,7 @@ def get_server_stats() -> Dict[str, Any]:
         
         return {
             "success": True,
-            "server_version": "2.0-responses-api",
+            "server_version": "latest-responses-api",
             "api_type": "OpenAI Responses API",
             **stats
         }
@@ -1179,7 +1179,7 @@ def main():
             logger.error("CRITICAL_MAIN: OPENAI_API_KEY environment variable is required. Server cannot start.")
             return
         
-        logger.info("Starting OpenAI Image MCP Server v2.0 with Responses API")
+        logger.info("Starting OpenAI Image MCP Server with Responses API")
         
         # Initialize global instances
         get_session_manager()

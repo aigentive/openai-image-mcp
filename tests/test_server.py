@@ -1,4 +1,4 @@
-"""Basic tests for the OpenAI Image MCP Server v2.0."""
+"""Basic tests for the OpenAI Image MCP Server."""
 
 import pytest
 import os

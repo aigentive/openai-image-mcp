@@ -61,7 +61,7 @@ class TestUsageGuide:
             # Check that it contains expected content from our LLM.md
             assert result["success"] is True
             assert "Quick Decision Tree" in result["guide_content"]
-            assert "session" in result["guide_content"].lower()  # v2.0 should mention sessions
+            assert "session" in result["guide_content"].lower()  # Should mention sessions
             assert result["architecture"] == "Session-based Conversational Image Generation"
             assert "Multi-turn conversational sessions" in result["key_features"]
             assert len(result["guide_content"]) > 1000  # Should be comprehensive
