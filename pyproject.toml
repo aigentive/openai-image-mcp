@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openai-image-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Session-based conversational image generation MCP server using OpenAI's advanced models"
 authors = ["Laza Bogdan <laza.bogdan@macro-net.ro>"]
 readme = "README.md"
@@ -22,7 +22,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.10"
-openai = "^1.0.0"
+openai = ">=1.82.0"
 mcp = {extras = ["cli"], version = "^1.0.0"}
 python-dotenv = "^1.0.0"
 pydantic = "^2.0.0"
