@@ -1,1256 +1,1201 @@
-"""Main MCP server implementation for OpenAI image generation using FastMCP."""
+"""Main MCP server implementation for OpenAI conversational image generation using Responses API."""
 
 import logging
 import os
-import datetime
 import sys
+import json
+from typing import Optional, Dict, Any
 
-
-from typing import Optional
-
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server import FastMCP
 from dotenv import load_dotenv
 
-from .image_agent import OpenAIImageAgent
-from .model_selector import ModelSelector
+from .session_manager import SessionManager, ImageSession
+from .responses_client import ResponsesAPIClient
+from .conversation_builder import ConversationBuilder
+from .image_processor import ImageProcessor
 from .file_organizer import FileOrganizer
 
 # Load environment variables
 load_dotenv()
 
-# Configure basic console logging (stderr)
-# All detailed logging will be captured by redirecting stderr at the shell level.
+# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(pathname)s:%(lineno)d - %(message)s',
-    handlers=[logging.StreamHandler(sys.stderr)], # Log to stderr
+    handlers=[logging.StreamHandler(sys.stderr)],
     force=True
 )
 
-logger = logging.getLogger(__name__) # Get logger for the current module
-
-logger.info("MCP Server Script: Initializing...") # Test message
+logger = logging.getLogger(__name__)
+logger.info("Conversational Image MCP Server initializing...")
 
 # Create FastMCP server
 mcp = FastMCP("openai-image-mcp")
 
-# Global instances - will be initialized on first use
-agent: Optional[OpenAIImageAgent] = None
-model_selector: Optional[ModelSelector] = None
+# Global instances
+session_manager: Optional[SessionManager] = None
+responses_client: Optional[ResponsesAPIClient] = None
+conversation_builder: Optional[ConversationBuilder] = None
+image_processor: Optional[ImageProcessor] = None
 file_organizer: Optional[FileOrganizer] = None
 
 
-def get_agent() -> OpenAIImageAgent:
-    global agent
-    logger.debug("get_agent() called")
-    if agent is None:
-        logger.info("Initializing OpenAIImageAgent...")
-        try:
-            agent = OpenAIImageAgent()
-            logger.info("OpenAI Image Agent initialized successfully")
-        except Exception as e_agent_init:
-            logger.error(f"Failed to initialize OpenAIImageAgent: {e_agent_init}", exc_info=True)
-            raise 
-    return agent
+def get_session_manager() -> SessionManager:
+    """Get or create session manager instance."""
+    global session_manager
+    if session_manager is None:
+        max_sessions = int(os.getenv("MCP_MAX_SESSIONS", "100"))
+        session_timeout = int(os.getenv("MCP_SESSION_TIMEOUT", "3600")) // 3600  # Convert to hours
+        session_manager = SessionManager(max_sessions=max_sessions, session_timeout_hours=session_timeout)
+        logger.info("SessionManager initialized")
+    return session_manager
 
-def get_model_selector() -> ModelSelector:
-    global model_selector
-    if model_selector is None:
-        logger.info("Initializing ModelSelector...")
-        model_selector = ModelSelector()
-    return model_selector
+
+def get_responses_client() -> ResponsesAPIClient:
+    """Get or create responses client instance."""
+    global responses_client
+    if responses_client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("CRITICAL: OPENAI_API_KEY environment variable is required")
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        responses_client = ResponsesAPIClient(api_key=api_key)
+        logger.info("ResponsesAPIClient initialized")
+    return responses_client
+
+
+def get_conversation_builder() -> ConversationBuilder:
+    """Get or create conversation builder instance."""
+    global conversation_builder
+    if conversation_builder is None:
+        conversation_builder = ConversationBuilder()
+        logger.info("ConversationBuilder initialized")
+    return conversation_builder
+
 
 def get_file_organizer() -> FileOrganizer:
+    """Get or create file organizer instance."""
     global file_organizer
     if file_organizer is None:
-        logger.info("Initializing FileOrganizer...")
-        file_organizer = FileOrganizer()
+        # Auto-detect workspace root
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_root = os.path.dirname(os.path.dirname(script_dir))
+        file_organizer = FileOrganizer(workspace_root=workspace_root)
+        logger.info("FileOrganizer initialized")
     return file_organizer
+
+
+def get_image_processor() -> ImageProcessor:
+    """Get or create image processor instance."""
+    global image_processor
+    if image_processor is None:
+        image_processor = ImageProcessor(
+            file_organizer=get_file_organizer(),
+            responses_client=get_responses_client()
+        )
+        logger.info("ImageProcessor initialized")
+    return image_processor
+
+
+# Session Management MCP Tools
+
+@mcp.tool()
+def create_image_session(
+    description: str,
+    model: str = "gpt-4o",
+    session_name: Optional[str] = None
+) -> Dict[str, Any]:
+    """Create new conversational image generation session.
+    
+    Args:
+        description: Initial description/context for the session
+        model: OpenAI model to use (gpt-4o, gpt-4.1, gpt-4o-mini)
+        session_name: Optional human-readable name
+        
+    Returns:
+        {
+            "session_id": "uuid-string",
+            "model": "gpt-4o", 
+            "created_at": "2025-05-25T10:00:00Z",
+            "status": "active"
+        }
+    """
+    try:
+        logger.info(f"Creating image session with model {model}")
+        
+        manager = get_session_manager()
+        session = manager.create_session(
+            description=description,
+            model=model,
+            session_name=session_name
+        )
+        
+        return {
+            "success": True,
+            "session_id": session.session_id,
+            "model": session.model,
+            "created_at": session.created_at.isoformat(),
+            "status": "active",
+            "session_name": session.session_name,
+            "description": description
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create session: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "session_creation_error"
+        }
+
+
+@mcp.tool()
+def generate_image_in_session(
+    session_id: str,
+    prompt: str,
+    reference_image_path: Optional[str] = None,
+    mask_image_path: Optional[str] = None,
+    quality: str = "auto",
+    size: str = "auto",
+    background: str = "auto"
+) -> Dict[str, Any]:
+    """Generate image within existing session context.
+    
+    Args:
+        session_id: UUID of existing session
+        prompt: Generation/editing instruction
+        reference_image_path: Path to reference image for editing
+        mask_image_path: Path to mask for inpainting (requires reference_image_path)
+        quality: Image quality (low, medium, high, auto)
+        size: Image size (1024x1024, 1536x1024, 1024x1536, auto)
+        background: Background type (transparent, auto)
+        
+    Returns:
+        {
+            "success": true,
+            "image_path": "/organized/path/to/image.png",
+            "image_generation_id": "ig_123",
+            "revised_prompt": "Enhanced prompt used",
+            "metadata": {...},
+            "session_context": "Brief summary of what happened"
+        }
+    """
+    try:
+        logger.info(f"Generating image in session {session_id}")
+        
+        # Get session
+        manager = get_session_manager()
+        session = manager.get_session(session_id)
+        if not session:
+            return {
+                "success": False,
+                "error": f"Session {session_id} not found",
+                "error_type": "session_not_found",
+                "available_sessions": [s.session_id for s in manager.list_active_sessions()]
+            }
+        
+        # Update session activity
+        manager.update_activity(session_id)
+        
+        # Build user input
+        builder = get_conversation_builder()
+        user_input = builder.build_user_input_from_params(
+            prompt=prompt,
+            reference_image_path=reference_image_path,
+            mask_image_path=mask_image_path
+        )
+        
+        # Prepare tools configuration
+        tools_config = {
+            "quality": quality,
+            "size": size,
+            "background": background
+        }
+        
+        # Handle mask image if provided
+        if mask_image_path:
+            if not reference_image_path:
+                return {
+                    "success": False,
+                    "error": "mask_image_path requires reference_image_path",
+                    "error_type": "invalid_parameters"
+                }
+            
+            try:
+                processor = get_image_processor()
+                mask_validation = processor.validate_image_file(mask_image_path)
+                if not mask_validation["valid"]:
+                    return {
+                        "success": False,
+                        "error": f"Invalid mask image: {mask_validation['errors']}",
+                        "error_type": "invalid_mask_image"
+                    }
+                
+                # Upload mask to OpenAI Files API
+                client = get_responses_client()
+                mask_file_id = client.create_file_from_path(mask_image_path)
+                tools_config["mask_file_id"] = mask_file_id
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"Failed to process mask image: {str(e)}",
+                    "error_type": "mask_processing_error"
+                }
+        
+        # Add conversation turn
+        manager.add_conversation_turn(session_id, "user", user_input)
+        
+        # Make API call
+        client = get_responses_client()
+        api_result = client.generate_with_conversation(session, user_input, tools_config)
+        
+        if not api_result["success"]:
+            return {
+                "success": False,
+                "error": api_result["error"],
+                "error_type": api_result["error_type"],
+                "retryable": api_result.get("retryable", False)
+            }
+        
+        # Process generation results
+        generation_calls = api_result["generation_calls"]
+        if not generation_calls:
+            return {
+                "success": False,
+                "error": "No images generated",
+                "error_type": "no_generation_result"
+            }
+        
+        # Process the first generation call
+        processor = get_image_processor()
+        generation_call = processor.process_generation_result(
+            generation_calls[0], 
+            session,
+            use_case="general"
+        )
+        
+        # Add to session
+        manager.add_generated_image(session_id, generation_call)
+        
+        # Add assistant response to conversation
+        assistant_content = builder.format_assistant_response([generation_call])
+        manager.add_conversation_turn(session_id, "assistant", assistant_content)
+        
+        # Build response
+        session_context = f"Generated image {len(session.generated_images)} in conversation with {len(session.conversation_history)} turns"
+        
+        return {
+            "success": True,
+            "image_path": generation_call.image_path,
+            "image_generation_id": generation_call.id,
+            "revised_prompt": generation_call.revised_prompt,
+            "original_prompt": generation_call.prompt,
+            "metadata": {
+                "session_id": session_id,
+                "model": session.model,
+                "generation_params": generation_call.generation_params,
+                "created_at": generation_call.created_at.isoformat()
+            },
+            "session_context": session_context
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to generate image in session {session_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "generation_error"
+        }
+
+
+@mcp.tool()
+def get_session_status(session_id: str) -> Dict[str, Any]:
+    """Get current session status and recent activity.
+    
+    Returns:
+        {
+            "session_id": "uuid",
+            "active": true,
+            "created_at": "timestamp",
+            "last_activity": "timestamp", 
+            "model": "gpt-4o",
+            "total_generations": 5,
+            "recent_images": ["path1", "path2"],
+            "conversation_summary": "Brief context summary"
+        }
+    """
+    try:
+        manager = get_session_manager()
+        summary = manager.get_session_summary(session_id)
+        
+        if not summary:
+            return {
+                "success": False,
+                "error": f"Session {session_id} not found",
+                "error_type": "session_not_found",
+                "available_sessions": [s.session_id for s in manager.list_active_sessions()]
+            }
+        
+        return {
+            "success": True,
+            **summary
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get session status for {session_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "status_error"
+        }
+
+
+@mcp.tool()
+def list_active_sessions() -> Dict[str, Any]:
+    """List all active sessions.
+    
+    Returns:
+        {
+            "sessions": [
+                {
+                    "session_id": "uuid",
+                    "session_name": "Logo Design Session",
+                    "created_at": "timestamp",
+                    "last_activity": "timestamp",
+                    "total_generations": 3
+                }
+            ],
+            "total_active": 5
+        }
+    """
+    try:
+        manager = get_session_manager()
+        sessions = manager.list_active_sessions()
+        
+        session_summaries = []
+        for session in sessions:
+            session_summaries.append({
+                "session_id": session.session_id,
+                "session_name": session.session_name,
+                "description": session.description,
+                "model": session.model,
+                "created_at": session.created_at.isoformat(),
+                "last_activity": session.last_activity.isoformat(),
+                "total_generations": len(session.generated_images)
+            })
+        
+        return {
+            "success": True,
+            "sessions": session_summaries,
+            "total_active": len(sessions)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list active sessions: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "list_error"
+        }
+
+
+@mcp.tool()
+def close_session(session_id: str) -> Dict[str, Any]:
+    """Close session and clean up resources.
+    
+    Returns:
+        {
+            "status": "closed",
+            "session_id": "uuid",
+            "final_image_count": "5"
+        }
+    """
+    try:
+        manager = get_session_manager()
+        session = manager.get_session(session_id)
+        
+        if not session:
+            return {
+                "success": False,
+                "error": f"Session {session_id} not found",
+                "error_type": "session_not_found"
+            }
+        
+        final_image_count = len(session.generated_images)
+        
+        # Clean up session resources
+        processor = get_image_processor()
+        processor.cleanup_temp_files(session)
+        
+        # Close session
+        success = manager.close_session(session_id)
+        
+        if success:
+            return {
+                "success": True,
+                "status": "closed",
+                "session_id": session_id,
+                "final_image_count": str(final_image_count)
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Failed to close session",
+                "error_type": "close_error"
+            }
+        
+    except Exception as e:
+        logger.error(f"Failed to close session {session_id}: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "close_error"
+        }
+
+
+# Simplified Generation Tools (Session-Optional)
 
 @mcp.tool()
 def generate_image(
     prompt: str,
-    model: str = "auto",
-    quality: str = "auto", 
+    session_id: Optional[str] = None,
+    model: str = "gpt-4o",
+    quality: str = "auto",
     size: str = "auto",
-    style: str = "natural",
-    format: str = "png",
     background: str = "auto",
-    save_path: Optional[str] = None,
-    n: int = 1
-) -> str:
-    """
-    Generate an image using OpenAI's image models with intelligent model selection.
+    use_case: str = "general"
+) -> Dict[str, Any]:
+    """Generate image with optional session context.
     
-    This tool intelligently selects the best model and parameters based on your 
-    requirements. Use 'auto' settings to let the tool optimize for your use case.
-    
-    When to use this tool:
-    - Creating new images from text descriptions
-    - When you need general-purpose image generation  
-    - For single images (use batch_generate for multiple)
-    
-    Model selection guide:
-    - 'auto': Best choice for most cases - tool selects optimal model
-    - 'gpt-image-1': When you need text in images or highest quality
-    - 'dall-e-3': For artistic images or specific large dimensions
-    - 'dall-e-2': For budget-conscious generation or when you need variations
-    
-    Quality guidelines:
-    - 'auto': Recommended - balances quality and cost
-    - 'high': Product photos, professional use
-    - 'medium': General content, social media
-    - 'low': Drafts, iterations, testing
+    If session_id provided, uses session context. Otherwise creates single-shot generation.
     
     Args:
-        prompt: Text description of the desired image
-        model: "auto" | "gpt-image-1" | "dall-e-3" | "dall-e-2" (default: "auto")
-        quality: "auto" | "low" | "medium" | "high" | "hd" (default: "auto")
-        size: "auto" | specific dimensions like "1024x1024" (default: "auto")
-        style: "natural" | "vivid" (for DALL-E 3, default: "natural")
-        format: "png" | "jpeg" | "webp" (default: "png")
-        background: "auto" | "transparent" (default: "auto")
-        save_path: Custom save location (default: auto-organized)
-        n: Number of images to generate (default: 1)
-    
-    Examples:
-    - Product photo: generate_image("professional photo of wireless headphones", quality="high")
-    - Logo design: generate_image("minimal tech startup logo", background="transparent")
-    - Illustration: generate_image("children's book illustration of a friendly dragon", model="dall-e-3")
+        prompt: Text prompt for image generation
+        session_id: Optional UUID of existing session for context
+        model: OpenAI model to use (gpt-4o, gpt-4.1, gpt-4o-mini)
+        quality: Image quality (low, medium, high, auto)
+        size: Image size (1024x1024, 1536x1024, 1024x1536, auto)
+        background: Background type (transparent, auto)
+        use_case: Use case for file organization (general, product, ui, etc.)
+        
+    Returns:
+        Generation result with image path and metadata
     """
-    logger.info(f"MCP TOOL CALLED: generate_image with prompt: '{prompt}'")
     try:
-        # Get helper instances
-        selector = get_model_selector()
-        organizer = get_file_organizer()
-        
-        # Select optimal parameters using intelligent selection
-        config = selector.select_model_and_params(
-            use_case="general",
-            model=model,
-            quality=quality,
-            size=size,
-            prompt=prompt,
-            background=background,
-            style=style,
-            format=format
-        )
-        
-        logger.debug(f"Selected config: {config}")
-        
-        # Extract selected parameters
-        selected_model = config["model"]
-        selected_quality = config["quality"]
-        selected_size = config["size"]
-        selected_style = config.get("style", style)
-        selected_format = config.get("format", format)
-        selected_background = config.get("background")
-
-        # Parameter validation
-        if selected_model not in ["gpt-image-1", "dall-e-3", "dall-e-2"]:
-            return f"Error: Invalid model '{selected_model}'. Must be one of: gpt-image-1, dall-e-3, dall-e-2."
-            
-        # Model-specific validations
-        if selected_model == "dall-e-3":
-            if selected_quality not in ["standard", "hd"]:
-                return f"Error: Invalid quality '{selected_quality}' for DALL-E 3. Choose 'standard' or 'hd'."
-            if selected_style not in ["vivid", "natural"]:
-                return f"Error: Invalid style '{selected_style}' for DALL-E 3. Choose 'vivid' or 'natural'."
-        elif selected_model == "dall-e-2":
-            if selected_quality not in ["standard"]:
-                selected_quality = "standard"  # Force standard for DALL-E 2
-                
-        if selected_format.lower() not in ["png", "jpeg", "jpg", "webp"]:
-            return f"Error: Invalid format '{selected_format}'. Choose png, jpeg, or webp."
-            
-        if n > 1 and selected_model == "dall-e-3":
-            logger.warning(f"DALL-E 3 doesn't support n>1, setting n=1")
-            n = 1
-
-        # This section is now handled above with save_paths generation
-            
-        agent_instance = get_agent()
-        
-        # Generate organized save paths for each image
-        save_paths = []
-        for i in range(n):
-            path = organizer.get_save_path(
-                use_case="general",
-                filename_prefix=f"generated_{i+1}",
-                file_format=selected_format
-            )
-            save_paths.append(path)
-
-        # Handle different models appropriately
-        if selected_model == "gpt-image-1":
-            # For GPT-Image-1, we'll need to use the existing generate_and_download_images
-            # but adapt it for the new model (this will require agent updates)
-            results = agent_instance.generate_and_download_images(
+        if session_id:
+            # Use existing session
+            return generate_image_in_session(
+                session_id=session_id,
                 prompt=prompt,
-                model="dall-e-3",  # Temporary fallback until agent supports gpt-image-1
-                size=selected_size,
-                quality=selected_quality,
-                style=selected_style if selected_model == "dall-e-3" else None,
-                output_file_format=selected_format.lower(),
-                n=n,
-                save_paths=save_paths,
-                file_organizer=organizer
+                quality=quality,
+                size=size,
+                background=background
             )
         else:
-            results = agent_instance.generate_and_download_images(
-                prompt=prompt, 
-                model=selected_model, 
-                size=selected_size, 
-                quality=selected_quality, 
-                style=selected_style if selected_model == "dall-e-3" else None,
-                output_file_format=selected_format.lower(),
-                n=n,
-                save_paths=save_paths,
-                file_organizer=organizer
+            # Create temporary session for single-shot generation
+            logger.info(f"Creating single-shot generation with model {model}")
+            
+            manager = get_session_manager()
+            temp_session = manager.create_session(
+                description=f"Single-shot generation: {prompt[:100]}...",
+                model=model,
+                session_name="Temporary Generation"
             )
-        
-        if not results:
-            logger.warning("No images generated/downloaded by agent.")
-            return "Error: No images were generated or downloaded."
             
-        # Process results and save metadata
-        response_parts = []
-        cost_info = selector.estimate_cost(selected_model, selected_quality, selected_size, n)
-        
-        for i, result in enumerate(results):
-            filepath = result.get("filepath")
-            saved_bytes = result.get("saved_image_data_bytes", 0)
-            revised_prompt = result.get("revised_prompt", prompt)
-            
-            # Save metadata
-            if filepath:
-                metadata = {
-                    "original_prompt": prompt,
-                    "revised_prompt": revised_prompt,
-                    "model": selected_model,
-                    "quality": selected_quality,
-                    "size": selected_size,
-                    "style": selected_style,
-                    "format": selected_format,
-                    "background": selected_background,
-                    "use_case": "general",
-                    "cost_estimate": cost_info,
-                    "file_size_bytes": saved_bytes
-                }
-                organizer.save_image_metadata(filepath, metadata)
-            
-            if i == 0:  # Main response for first image
-                response_parts.extend([
-                    f"✅ Image generated successfully!",
-                    f"📝 Prompt: '{prompt}'",
-                    f"🔄 Revised: '{revised_prompt}'" if revised_prompt != prompt else "",
-                    f"🤖 Model: {selected_model} (auto-selected)" if model == "auto" else f"🤖 Model: {selected_model}",
-                    f"📐 Size: {selected_size}", 
-                    f"⚡ Quality: {selected_quality}",
-                    f"💾 Format: {selected_format}"
-                ])
+            try:
+                # Generate image in temporary session
+                result = generate_image_in_session(
+                    session_id=temp_session.session_id,
+                    prompt=prompt,
+                    quality=quality,
+                    size=size,
+                    background=background
+                )
                 
-                if selected_model == "dall-e-3":
-                    response_parts.append(f"🎨 Style: {selected_style}")
-                if selected_background == "transparent":
-                    response_parts.append(f"🔍 Background: transparent")
-                    
-                if filepath and saved_bytes > 0:
-                    response_parts.append(f"📁 Saved to: {filepath} ({saved_bytes:,} bytes)")
-                    response_parts.append(f"💰 Cost: {cost_info['cost_level']} ({cost_info['cost_type']})")
-                else:
-                    response_parts.append(f"❌ Failed to save image. Check server logs.")
-                    
-                # Remove empty strings
-                response_parts = [part for part in response_parts if part]
-            else:  # Additional images
-                if filepath:
-                    response_parts.append(f"📁 Image {i+1}: {filepath}")
+                # Add single-shot indicator to result
+                if result.get("success"):
+                    result["single_shot"] = True
+                    result["temporary_session_id"] = temp_session.session_id
+                
+                return result
+                
+            finally:
+                # Clean up temporary session
+                manager.close_session(temp_session.session_id)
         
-        return "\n".join(response_parts)
-
     except Exception as e:
-        logger.error(f"Error in generate_image tool: {str(e)}", exc_info=True)
-        return f"❌ Error generating image: {str(e)}"
+        logger.error(f"Failed to generate image: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "generation_error"
+        }
 
 
 @mcp.tool()
 def edit_image(
     image_path: str,
     prompt: str,
+    session_id: Optional[str] = None,
     mask_path: Optional[str] = None,
-    model: str = "dall-e-2",
-    size: str = "1024x1024",
-    n: int = 1,
-    response_format: str = "b64_json"
-) -> str:
-    """
-    Edits an image using a local image file and an optional local mask file.
-    Args:
-        image_path: Path to the local base image file (e.g., /path/to/image.png).
-        prompt: Description of the edits to make.
-        mask_path: Optional path to a local mask image file (black and white PNG).
-        model: Model to use (typically "dall-e-2" for edits).
-        size: Image size (e.g., "1024x1024", "512x512", "256x256" for DALL-E 2).
-        n: Number of edited images to generate (1-10, DALL-E 2 supports up to 10).
-        response_format: Desired format for OpenAI response ('url' or 'b64_json').
-    """
-    logger.info(f"MCP TOOL CALLED: edit_image for '{image_path}'")
-    try:
-        logger.debug(f"Params: image_path='{image_path}', prompt='{prompt}', mask_path='{mask_path}', model='{model}', size='{size}', n={n}, response_format='{response_format}'")
-        
-        # Basic validation for edit_image
-        if model != "dall-e-2": # Currently hardcoded agent support for DALL-E 2 edits
-             return f"Error: Invalid model '{model}' for edit_image. Currently only 'dall-e-2' is supported by the agent."
-        # DALL-E 2 edit sizes
-        valid_edit_sizes = ["1024x1024", "512x512", "256x256"]
-        if size not in valid_edit_sizes:
-            return f"Error: Invalid size '{size}' for DALL-E 2 edit. Must be one of: {valid_edit_sizes}"
-        if not (1 <= n <= 10):
-             return f"Error: Number of images 'n' for DALL-E 2 edit must be between 1 and 10."
-        if response_format not in ["url", "b64_json"]:
-            return f"Error: Invalid response_format '{response_format}'. Choose 'url' or 'b64_json'."
-
-
-        agent_instance = get_agent()
-        results = agent_instance.edit_image(
-            image_path=image_path, 
-            prompt=prompt, 
-            mask_path=mask_path,
-            model=model, 
-            size=size, 
-            n=n,
-            response_format=response_format
-        )
-        
-        if not results:
-            logger.warning("No images returned from agent edit_image call.")
-            return "Error: No images were returned from the edit operation."
-
-        response_lines = [f"Edited {len(results)} image(s) using {model}:"]
-        for i, res in enumerate(results, 1):
-            response_lines.append(f"  Image {i}:")
-            response_lines.append(f"    Original Image Path: {res.get('original_image_path')}")
-            if res.get('mask_image_path'):
-                 response_lines.append(f"    Mask Image Path: {res.get('mask_image_path')}")
-            response_lines.append(f"    Revised Prompt: {res.get('revised_prompt', '(not revised)')}") # Edits may not revise prompt
-            if res.get("url"):
-                response_lines.append(f"    URL: {res.get('url')}")
-            if res.get("b64_json"):
-                response_lines.append(f"    b64_json available: True (length approx {len(res['b64_json']) // 4 * 3} bytes)")
-            response_lines.append(f"    Determined Format: {res.get('determined_format', 'N/A')}")
-            response_lines.append("")
-        
-        # Note: This tool does not save the edited image to a file yet.
-        # It returns URLs or b64_json from OpenAI as per the agent method.
-        # User would need to handle saving/displaying from this data.
-        return "\n".join(response_lines)
-
-    except FileNotFoundError as e_fnf:
-        logger.error(f"File not found error in edit_image tool: {str(e_fnf)}", exc_info=True)
-        return f"Error: {str(e_fnf)}"
-    except Exception as e:
-        logger.error(f"Error in edit_image tool: {str(e)}", exc_info=True)
-        return f"Error processing edit_image: {str(e)}"
-
-@mcp.tool()
-def edit_image_advanced(
-    image_path: str,
-    prompt: str,
-    mode: str = "inpaint",
-    mask_path: Optional[str] = None,
-    model: str = "auto",
-    strength: float = 0.8,
-    save_path: Optional[str] = None
-) -> str:
-    """
-    Advanced image editing with multiple modes and intelligent model selection.
-    
-    When to use: For modifying existing images with sophisticated control
-    
-    Modes:
-    - "inpaint": Replace specific areas (requires mask)
-    - "outpaint": Extend image boundaries  
-    - "variation": Create similar versions
-    - "style_transfer": Apply artistic styles
+    quality: str = "auto"
+) -> Dict[str, Any]:
+    """Edit existing image with optional session context.
     
     Args:
-        image_path: Path to source image
-        prompt: Edit instructions
-        mode: "inpaint" | "outpaint" | "variation" | "style_transfer"
-        mask_path: Path to mask image (required for inpaint mode)
-        model: "auto" | "gpt-image-1" | "dall-e-2" (default: "auto")
-        strength: Edit strength 0.0-1.0 (default: 0.8)
-        save_path: Custom save location (default: auto-organized)
-    
-    Examples:
-    - Remove object: edit_image_advanced("photo.jpg", "remove the car", mode="inpaint", mask_path="car_mask.png")
-    - Style change: edit_image_advanced("photo.jpg", "make it look like a watercolor painting", mode="style_transfer")
-    - Create variation: edit_image_advanced("photo.jpg", "same scene, different lighting", mode="variation")
+        image_path: Path to image file to edit
+        prompt: Editing instruction
+        session_id: Optional UUID of existing session for context
+        mask_path: Optional path to mask for inpainting
+        quality: Image quality (low, medium, high, auto)
+        
+    Returns:
+        Edit result with new image path and metadata
     """
-    logger.info(f"MCP TOOL CALLED: edit_image_advanced with mode '{mode}' for '{image_path}'")
-    
     try:
-        # Validate input file exists
-        if not os.path.exists(image_path):
-            return f"❌ Error: Image file not found: {image_path}"
-            
-        # Validate mode
-        valid_modes = ["inpaint", "outpaint", "variation", "style_transfer"]
-        if mode not in valid_modes:
-            return f"❌ Error: Invalid mode '{mode}'. Choose from: {', '.join(valid_modes)}"
-            
-        # Validate mask requirements
-        if mode == "inpaint" and not mask_path:
-            return f"❌ Error: Inpaint mode requires a mask_path"
-            
-        if mask_path and not os.path.exists(mask_path):
-            return f"❌ Error: Mask file not found: {mask_path}"
-            
-        # Get helper instances
-        selector = get_model_selector()
-        organizer = get_file_organizer()
+        # Validate input image
+        processor = get_image_processor()
+        validation = processor.validate_image_file(image_path)
+        if not validation["valid"]:
+            return {
+                "success": False,
+                "error": f"Invalid input image: {validation['errors']}",
+                "error_type": "invalid_input_image"
+            }
         
-        # Select model based on mode and requirements
-        config = selector.select_model_and_params(
-            use_case="edit",
-            model=model,
-            mode=mode,
-            prompt=prompt
-        )
-        
-        selected_model = config["model"]
-        logger.info(f"Selected model {selected_model} for {mode} editing")
-        
-        # Validate model supports the mode
-        capabilities = selector.model_capabilities.get(selected_model, {})
-        supported_modes = capabilities.get("edit_modes", [])
-        
-        if mode not in supported_modes:
-            return f"❌ Error: Model {selected_model} doesn't support {mode} mode. Supported: {', '.join(supported_modes)}"
-            
-        # Generate save path
-        if save_path is None:
-            save_path = organizer.get_save_path(
-                use_case="edit",
-                filename_prefix=f"edited_{mode}",
-                file_format="png"
-            )
-            
-        agent_instance = get_agent()
-        
-        # Handle different editing modes
-        if mode == "variation" and selected_model == "dall-e-2":
-            # DALL-E 2 variation endpoint (not implemented yet in agent)
-            return f"❌ Error: Variation mode not yet implemented. Use legacy edit_image tool for now."
-            
-        elif mode in ["inpaint", "style_transfer"]:
-            # Use existing edit functionality
-            results = agent_instance.edit_image(
-                image_path=image_path,
+        if session_id:
+            # Use existing session
+            return generate_image_in_session(
+                session_id=session_id,
                 prompt=prompt,
-                mask_path=mask_path,
-                model=selected_model if selected_model != "gpt-image-1" else "dall-e-2",  # Fallback until agent supports gpt-image-1
-                size="1024x1024",
-                n=1,
-                response_format="b64_json"
+                reference_image_path=image_path,
+                mask_image_path=mask_path,
+                quality=quality
+            )
+        else:
+            # Create temporary session for single-shot editing
+            logger.info(f"Creating single-shot edit for {image_path}")
+            
+            manager = get_session_manager()
+            temp_session = manager.create_session(
+                description=f"Single-shot edit: {prompt[:100]}...",
+                model="gpt-4o",
+                session_name="Temporary Edit"
             )
             
-            if not results:
-                return f"❌ Error: No edited images returned"
+            try:
+                # Edit image in temporary session
+                result = generate_image_in_session(
+                    session_id=temp_session.session_id,
+                    prompt=prompt,
+                    reference_image_path=image_path,
+                    mask_image_path=mask_path,
+                    quality=quality
+                )
                 
-            result = results[0]
-            
-            # Get image data and save
-            image_data = None
-            if result.get("b64_json"):
-                import base64
-                image_data = base64.b64decode(result["b64_json"])
-            elif result.get("url") and result["url"].startswith("http"):
-                import requests
-                response = requests.get(result["url"], timeout=90)
-                response.raise_for_status()
-                image_data = response.content
+                # Add single-shot indicator to result
+                if result.get("success"):
+                    result["single_shot"] = True
+                    result["temporary_session_id"] = temp_session.session_id
+                    result["original_image_path"] = image_path
                 
-            if image_data:
-                # Save the edited image
-                try:
-                    with open(save_path, "wb") as f:
-                        f.write(image_data)
-                        
-                    # Save metadata
-                    metadata = {
-                        "original_image": image_path,
-                        "edit_prompt": prompt,
-                        "edit_mode": mode,
-                        "model": selected_model,
-                        "mask_path": mask_path,
-                        "strength": strength,
-                        "file_size_bytes": len(image_data)
-                    }
-                    organizer.save_image_metadata(save_path, metadata)
-                    
-                    return f"""✅ Image edited successfully!
-📝 Mode: {mode}
-🖼️ Original: {image_path}
-🎭 Edit: {prompt}
-🤖 Model: {selected_model}
-📁 Saved to: {save_path} ({len(image_data):,} bytes)"""
-                    
-                except Exception as e:
-                    logger.error(f"Failed to save edited image: {e}")
-                    return f"❌ Error saving edited image: {str(e)}"
-            else:
-                return f"❌ Error: No image data received from API"
+                return result
                 
-        else:
-            return f"❌ Error: Mode '{mode}' not yet implemented"
-            
+            finally:
+                # Clean up temporary session
+                manager.close_session(temp_session.session_id)
+        
     except Exception as e:
-        logger.error(f"Error in edit_image_advanced: {str(e)}", exc_info=True)
-        return f"❌ Error in advanced editing: {str(e)}"
+        logger.error(f"Failed to edit image: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "edit_error"
+        }
+
+
+# Specialized Image Generation Tools
 
 @mcp.tool()
 def generate_product_image(
     product_description: str,
+    session_id: Optional[str] = None,
     background_type: str = "white",
     angle: str = "front",
     lighting: str = "studio",
-    props: str = "",
     batch_count: int = 1
-) -> str:
-    """
-    Generate optimized product photography images for e-commerce and catalogs.
-    
-    When to use: E-commerce, catalogs, product showcases
-    Automatically uses GPT-Image-1 with high quality for best realism.
+) -> Dict[str, Any]:
+    """Generate product images with specialized parameters.
     
     Args:
-        product_description: Detailed description of the product
-        background_type: "transparent" | "white" | "lifestyle" | "custom" (default: "white")
-        angle: "front" | "side" | "top" | "45deg" | "multiple" (default: "front")
-        lighting: "studio" | "natural" | "dramatic" (default: "studio")
-        props: Additional scene elements or styling notes
-        batch_count: Number of variations to generate (1-4, default: 1)
-    
-    Examples:
-    - Simple product: generate_product_image("wireless bluetooth headphones", background_type="transparent")
-    - Lifestyle shot: generate_product_image("ceramic coffee mug", background_type="lifestyle", props="coffee beans, wooden table")
-    - Multiple angles: generate_product_image("smartphone case", angle="multiple", batch_count=3)
+        product_description: Description of the product
+        session_id: Optional session for context
+        background_type: Background type (white, transparent, lifestyle)
+        angle: Product angle (front, side, three-quarter, top)
+        lighting: Lighting setup (studio, natural, dramatic, soft)
+        batch_count: Number of variations to generate (1-3)
+        
+    Returns:
+        Product image generation results
     """
-    logger.info(f"MCP TOOL CALLED: generate_product_image for '{product_description}'")
-    
     try:
         # Validate parameters
-        valid_backgrounds = ["transparent", "white", "lifestyle", "custom"]
+        valid_backgrounds = ["white", "transparent", "lifestyle"]
+        valid_angles = ["front", "side", "three-quarter", "top"]
+        valid_lighting = ["studio", "natural", "dramatic", "soft"]
+        
         if background_type not in valid_backgrounds:
-            return f"❌ Error: Invalid background_type '{background_type}'. Choose from: {', '.join(valid_backgrounds)}"
-            
-        valid_angles = ["front", "side", "top", "45deg", "multiple"]
+            return {
+                "success": False,
+                "error": f"Invalid background_type '{background_type}'. Valid: {valid_backgrounds}",
+                "error_type": "invalid_parameters"
+            }
+        
         if angle not in valid_angles:
-            return f"❌ Error: Invalid angle '{angle}'. Choose from: {', '.join(valid_angles)}"
-            
-        valid_lighting = ["studio", "natural", "dramatic"]
+            return {
+                "success": False,
+                "error": f"Invalid angle '{angle}'. Valid: {valid_angles}",
+                "error_type": "invalid_parameters"
+            }
+        
         if lighting not in valid_lighting:
-            return f"❌ Error: Invalid lighting '{lighting}'. Choose from: {', '.join(valid_lighting)}"
-            
-        if not (1 <= batch_count <= 4):
-            return f"❌ Error: batch_count must be between 1 and 4"
+            return {
+                "success": False,
+                "error": f"Invalid lighting '{lighting}'. Valid: {valid_lighting}",
+                "error_type": "invalid_parameters"
+            }
         
-        # Get helper instances
-        organizer = get_file_organizer()
+        if not 1 <= batch_count <= 3:
+            return {
+                "success": False,
+                "error": "batch_count must be between 1 and 3",
+                "error_type": "invalid_parameters"
+            }
         
-        # Build optimized prompt for product photography
-        prompt_parts = []
-        
-        # Base product description
-        if background_type == "lifestyle":
-            prompt_parts.append(f"Professional lifestyle product photography of {product_description}")
-        else:
-            prompt_parts.append(f"Professional product photography of {product_description}")
-            
-        # Angle specification
-        angle_descriptions = {
-            "front": "front view, centered composition",
-            "side": "side profile view, showing depth and form",
-            "top": "top-down view, overhead perspective",
-            "45deg": "45-degree angle view, three-quarter perspective",
-            "multiple": "multiple angles in one frame, product showcase layout"
-        }
-        prompt_parts.append(angle_descriptions[angle])
-        
-        # Lighting setup
-        lighting_descriptions = {
-            "studio": "professional studio lighting, soft shadows, clean highlights",
-            "natural": "natural window lighting, soft and even illumination",
-            "dramatic": "dramatic lighting with strong contrast and depth"
-        }
-        prompt_parts.append(lighting_descriptions[lighting])
-        
-        # Background specification
-        if background_type == "transparent":
-            prompt_parts.append("isolated on transparent background")
-        elif background_type == "white":
-            prompt_parts.append("clean white background, seamless backdrop")
-        elif background_type == "lifestyle":
-            prompt_parts.append("realistic lifestyle setting, contextual environment")
-        
-        # Additional props
-        if props:
-            prompt_parts.append(f"with {props}")
-            
-        # Technical quality specifications
-        prompt_parts.extend([
-            "sharp focus, high detail, commercial quality",
-            "professional photography, high resolution",
-            "clean composition, product-focused"
-        ])
-        
-        final_prompt = ", ".join(prompt_parts)
-        logger.info(f"Generated product prompt: {final_prompt}")
-        
-        # Generate images using optimized settings
-        results = []
-        product_name = product_description.split()[0] if product_description else "product"
-        
-        for i in range(batch_count):
-            # Generate save path for organized storage
-            save_path = organizer.get_save_path(
-                use_case="product",
-                filename_prefix=f"{product_name}_{angle}",
-                file_format="png" if background_type == "transparent" else "png",
-                product_name=product_name
-            )
-            
-            # Use generate_image with product-optimized settings
-            result = generate_image(
-                prompt=final_prompt,
-                model="gpt-image-1",  # Force GPT-Image-1 for best quality
-                quality="high",
-                size="1024x1024",  # Standard product photo size
-                background="transparent" if background_type == "transparent" else "auto",
-                format="png",
-                save_path=save_path,
-                n=1
-            )
-            
-            results.append(f"Image {i+1}: {result}")
-            
-        # Create summary response
-        response_parts = [
-            f"🛍️ Product images generated successfully!",
-            f"📦 Product: {product_description}",
-            f"🎨 Background: {background_type}",
-            f"📐 Angle: {angle}",
-            f"💡 Lighting: {lighting}",
-            f"🔢 Generated: {batch_count} variation(s)",
-            "",
-            "📁 Results:"
+        # Build specialized product prompt
+        prompt_parts = [
+            f"Professional product photography of {product_description}",
+            f"{angle} view",
+            f"{lighting} lighting"
         ]
         
-        response_parts.extend(results)
+        if background_type == "white":
+            prompt_parts.append("clean white background")
+        elif background_type == "transparent":
+            prompt_parts.append("transparent background, isolated product")
+        elif background_type == "lifestyle":
+            prompt_parts.append("lifestyle setting, contextual background")
         
-        # Add metadata note
-        response_parts.extend([
-            "",
-            "ℹ️ All images saved with metadata for easy organization.",
-            "💡 Tip: Use batch_count > 1 for A/B testing different variations."
-        ])
+        prompt_parts.append("high quality, commercial photography style")
         
-        return "\n".join(response_parts)
+        final_prompt = ", ".join(prompt_parts)
+        
+        # Generate with appropriate settings
+        background_setting = "transparent" if background_type == "transparent" else "auto"
+        
+        results = []
+        for i in range(batch_count):
+            result = generate_image(
+                prompt=final_prompt,
+                session_id=session_id,
+                quality="high",
+                size="1024x1024",
+                background=background_setting,
+                use_case="product"
+            )
+            results.append(result)
+        
+        return {
+            "success": True,
+            "product_description": product_description,
+            "background_type": background_type,
+            "angle": angle,
+            "lighting": lighting,
+            "batch_count": batch_count,
+            "results": results,
+            "summary": f"Generated {batch_count} product images with {background_type} background"
+        }
         
     except Exception as e:
-        logger.error(f"Error in generate_product_image: {str(e)}", exc_info=True)
-        return f"❌ Error generating product image: {str(e)}"
+        logger.error(f"Failed to generate product image: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "product_generation_error"
+        }
+
 
 @mcp.tool()
 def generate_ui_asset(
     asset_type: str,
     description: str,
-    dimensions: str = "standard",
-    theme: str = "auto",
+    session_id: Optional[str] = None,
+    theme: str = "modern",
     style_preset: str = "flat",
-    export_formats: Optional[str] = "png"
-) -> str:
-    """
-    Create UI/UX design assets optimized for web and app interfaces.
-    
-    When to use: Web/app design, UI components, interface elements
-    Optimizes for web performance with proper naming conventions.
+    size_preset: str = "standard"
+) -> Dict[str, Any]:
+    """Generate UI assets like icons, illustrations, backgrounds.
     
     Args:
-        asset_type: "icon" | "illustration" | "hero" | "background"
-        description: Detailed description of the asset
-        dimensions: "standard" | custom like "512x512" (default: "standard")
-        theme: "light" | "dark" | "auto" (default: "auto")
-        style_preset: "flat" | "gradient" | "3d" | "outline" (default: "flat")
-        export_formats: "png" | "svg" | "webp" | "png,webp" (default: "png")
-    
-    Examples:
-    - App icon: generate_ui_asset("icon", "shopping cart with rounded corners", style_preset="flat")
-    - Hero image: generate_ui_asset("hero", "modern dashboard interface", dimensions="1200x600", theme="dark")
-    - Background: generate_ui_asset("background", "subtle geometric pattern", style_preset="gradient")
+        asset_type: Type of asset (icon, illustration, background, hero)
+        description: Description of the asset
+        session_id: Optional session for context
+        theme: Visual theme (modern, classic, minimal, playful)
+        style_preset: Style preset (flat, 3d, outline, filled)
+        size_preset: Size preset (small, standard, large)
+        
+    Returns:
+        UI asset generation results
     """
-    logger.info(f"MCP TOOL CALLED: generate_ui_asset - {asset_type}: '{description}'")
-    
     try:
         # Validate parameters
-        valid_asset_types = ["icon", "illustration", "hero", "background"]
+        valid_asset_types = ["icon", "illustration", "background", "hero"]
+        valid_themes = ["modern", "classic", "minimal", "playful"]
+        valid_styles = ["flat", "3d", "outline", "filled"]
+        valid_sizes = ["small", "standard", "large"]
+        
         if asset_type not in valid_asset_types:
-            return f"❌ Error: Invalid asset_type '{asset_type}'. Choose from: {', '.join(valid_asset_types)}"
-            
-        valid_themes = ["light", "dark", "auto"]
+            return {
+                "success": False,
+                "error": f"Invalid asset_type '{asset_type}'. Valid: {valid_asset_types}",
+                "error_type": "invalid_parameters"
+            }
+        
         if theme not in valid_themes:
-            return f"❌ Error: Invalid theme '{theme}'. Choose from: {', '.join(valid_themes)}"
-            
-        valid_styles = ["flat", "gradient", "3d", "outline"]
+            return {
+                "success": False,
+                "error": f"Invalid theme '{theme}'. Valid: {valid_themes}",
+                "error_type": "invalid_parameters"
+            }
+        
         if style_preset not in valid_styles:
-            return f"❌ Error: Invalid style_preset '{style_preset}'. Choose from: {', '.join(valid_styles)}"
+            return {
+                "success": False,
+                "error": f"Invalid style_preset '{style_preset}'. Valid: {valid_styles}",
+                "error_type": "invalid_parameters"
+            }
         
-        # Get helper instances
-        organizer = get_file_organizer()
-        
-        # Determine optimal dimensions based on asset type
-        size_map = {
-            "icon": "512x512",
-            "illustration": "1024x1024", 
-            "hero": "1200x600",
-            "background": "1920x1080"
-        }
-        
-        if dimensions == "standard":
-            selected_dimensions = size_map[asset_type]
-        else:
-            selected_dimensions = dimensions
-            
-        # Build optimized prompt for UI/UX design
+        # Build specialized UI asset prompt
         prompt_parts = []
         
-        # Asset type specific prompting
         if asset_type == "icon":
-            prompt_parts.append(f"Clean, minimalist {asset_type} design of {description}")
-            prompt_parts.append("vector-style, simple shapes, clear silhouette")
+            prompt_parts.extend([
+                f"{style_preset} style icon",
+                f"{description}",
+                f"{theme} design",
+                "clean, professional, suitable for UI"
+            ])
         elif asset_type == "illustration":
-            prompt_parts.append(f"Modern UI illustration of {description}")
-            prompt_parts.append("clean lines, digital art style")
-        elif asset_type == "hero":
-            prompt_parts.append(f"Hero section image showing {description}")
-            prompt_parts.append("modern web design, professional layout")
+            prompt_parts.extend([
+                f"{style_preset} illustration",
+                f"{description}",
+                f"{theme} style",
+                "vector-style, clean lines"
+            ])
         elif asset_type == "background":
-            prompt_parts.append(f"UI background pattern or texture: {description}")
-            prompt_parts.append("subtle, non-distracting, tileable")
-            
-        # Style preset application
-        style_descriptions = {
-            "flat": "flat design, solid colors, no shadows or depth",
-            "gradient": "modern gradients, smooth color transitions",
-            "3d": "subtle 3D effects, depth and dimension",
-            "outline": "outline style, line art, minimal fills"
-        }
-        prompt_parts.append(style_descriptions[style_preset])
+            prompt_parts.extend([
+                f"{theme} background pattern",
+                f"{description}",
+                f"{style_preset} design",
+                "seamless, subtle, non-distracting"
+            ])
+        elif asset_type == "hero":
+            prompt_parts.extend([
+                f"hero image for {description}",
+                f"{theme} style",
+                f"{style_preset} design",
+                "engaging, professional, web-ready"
+            ])
         
-        # Theme application
-        if theme == "light":
-            prompt_parts.append("light theme, bright colors, white/light backgrounds")
-        elif theme == "dark":
-            prompt_parts.append("dark theme, dark colors, black/dark backgrounds")
-        
-        # Technical specifications for UI assets
-        prompt_parts.extend([
-            "pixel-perfect, crisp edges, web-optimized",
-            "professional UI design, modern aesthetic",
-            "scalable design, clean composition"
-        ])
-        
-        if asset_type == "icon":
-            prompt_parts.append("transparent background, centered, padding around edges")
-            
         final_prompt = ", ".join(prompt_parts)
-        logger.info(f"Generated UI asset prompt: {final_prompt}")
         
-        # Generate save path for organized storage
-        save_path = organizer.get_save_path(
-            use_case="ui",
-            filename_prefix=f"{asset_type}_{style_preset}",
-            file_format="png",
-            asset_type=asset_type
-        )
+        # Set size based on preset and asset type
+        size_map = {
+            ("icon", "small"): "512x512",
+            ("icon", "standard"): "1024x1024", 
+            ("icon", "large"): "1024x1024",
+            ("illustration", "small"): "1024x1024",
+            ("illustration", "standard"): "1024x1024",
+            ("illustration", "large"): "1536x1024",
+            ("background", "small"): "1024x1024",
+            ("background", "standard"): "1024x1024",
+            ("background", "large"): "1536x1024",
+            ("hero", "small"): "1536x1024",
+            ("hero", "standard"): "1536x1024",
+            ("hero", "large"): "1536x1024"
+        }
         
-        # Use generate_image with UI-optimized settings
+        size = size_map.get((asset_type, size_preset), "1024x1024")
+        
+        # Generate with appropriate settings
         result = generate_image(
             prompt=final_prompt,
-            model="gpt-image-1",  # Best for clean graphics
-            quality="medium",     # Balanced for UI assets
-            size=selected_dimensions,
-            background="transparent" if asset_type == "icon" else "auto",
-            format="png",
-            save_path=save_path,
-            n=1
+            session_id=session_id,
+            quality="high",
+            size=size,
+            background="transparent" if asset_type in ["icon", "illustration"] else "auto",
+            use_case="ui"
         )
         
-        # Create response with UI-specific information
-        response_parts = [
-            f"🎨 UI asset generated successfully!",
-            f"📱 Type: {asset_type}",
-            f"📏 Dimensions: {selected_dimensions}",
-            f"🎭 Style: {style_preset}",
-            f"🌓 Theme: {theme}",
-            "",
-            f"📁 Result: {result}",
-            "",
-            "💡 UI Asset Tips:",
-            "• Icons work best with transparent backgrounds",
-            "• Heroes should use landscape dimensions (1200x600 or wider)", 
-            "• Backgrounds should be subtle to not interfere with content",
-            "• Use flat or outline styles for modern web interfaces"
-        ]
+        if result.get("success"):
+            result.update({
+                "asset_type": asset_type,
+                "theme": theme,
+                "style_preset": style_preset,
+                "size_preset": size_preset,
+                "ui_asset_summary": f"{style_preset} {asset_type} in {theme} theme"
+            })
         
-        # Handle multiple export formats if requested
-        export_list = [fmt.strip() for fmt in export_formats.split(",")]
-        if len(export_list) > 1:
-            response_parts.extend([
-                "",
-                f"🔄 Additional formats requested: {', '.join(export_list[1:])}",
-                "💡 Tip: PNG generated. For SVG, consider using design tools for vector conversion."
-            ])
-        
-        return "\n".join(response_parts)
+        return result
         
     except Exception as e:
-        logger.error(f"Error in generate_ui_asset: {str(e)}", exc_info=True)
-        return f"❌ Error generating UI asset: {str(e)}"
+        logger.error(f"Failed to generate UI asset: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "ui_asset_error"
+        }
+
 
 @mcp.tool()
-def batch_generate(
-    prompts: str,
-    variations_per_prompt: int = 1,
-    consistent_style: str = "",
-    model: str = "auto",
-    output_folder: Optional[str] = None
-) -> str:
-    """
-    Efficient bulk image generation with cost optimization and progress tracking.
-    
-    When to use: Multiple related images, A/B testing, content series
-    Cost-optimized batch processing with organized output.
-    
-    Args:
-        prompts: JSON array of prompts or newline-separated prompts
-        variations_per_prompt: 1-3 variations per prompt (default: 1)
-        consistent_style: Style to maintain across all images
-        model: "auto" | "gpt-image-1" | "dall-e-3" | "dall-e-2" (default: "auto")
-        output_folder: Custom folder name (default: auto-generated)
-    
-    Examples:
-    - Multiple concepts: batch_generate('["red car", "blue car", "green car"]', variations_per_prompt=2)
-    - Style series: batch_generate('["cat", "dog", "bird"]', consistent_style="watercolor painting")
-    - A/B testing: batch_generate('["product on white background", "product in lifestyle setting"]', variations_per_prompt=3)
-    """
-    logger.info(f"MCP TOOL CALLED: batch_generate")
-    
-    try:
-        # Parse prompts input
-        import json
-        
-        if prompts.strip().startswith('['):
-            # JSON array format
-            try:
-                prompt_list = json.loads(prompts)
-            except json.JSONDecodeError:
-                return f"❌ Error: Invalid JSON format in prompts. Use format: [\"prompt1\", \"prompt2\"]"
-        else:
-            # Newline-separated format
-            prompt_list = [p.strip() for p in prompts.split('\n') if p.strip()]
-            
-        if not prompt_list:
-            return f"❌ Error: No prompts provided"
-            
-        if len(prompt_list) > 10:
-            return f"❌ Error: Maximum 10 prompts allowed per batch. Received {len(prompt_list)}"
-            
-        if not (1 <= variations_per_prompt <= 3):
-            return f"❌ Error: variations_per_prompt must be between 1 and 3"
-        
-        # Get helper instances
-        selector = get_model_selector()
-        organizer = get_file_organizer()
-        
-        # Generate batch ID for organization
-        from datetime import datetime
-        batch_id = datetime.now().strftime('batch_%Y%m%d_%H%M%S')
-        if output_folder:
-            batch_id = output_folder
-            
-        # Select model with batch optimization
-        config = selector.select_model_and_params(
-            use_case="batch",
-            model=model,
-            budget_conscious=True  # Optimize for cost in batch operations
-        )
-        
-        selected_model = config["model"]
-        selected_quality = config["quality"]
-        
-        # Calculate total images and cost estimate
-        total_images = len(prompt_list) * variations_per_prompt
-        cost_info = selector.estimate_cost(selected_model, selected_quality, "1024x1024", total_images)
-        
-        logger.info(f"Batch generation: {len(prompt_list)} prompts × {variations_per_prompt} variations = {total_images} images")
-        logger.info(f"Selected model: {selected_model}, Cost level: {cost_info['cost_level']}")
-        
-        # Process each prompt
-        results = []
-        failed_count = 0
-        
-        for i, base_prompt in enumerate(prompt_list):
-            # Apply consistent style if specified
-            if consistent_style:
-                final_prompt = f"{base_prompt}, {consistent_style}"
-            else:
-                final_prompt = base_prompt
-                
-            logger.info(f"Processing prompt {i+1}/{len(prompt_list)}: {final_prompt}")
-            
-            # Generate variations for this prompt
-            for var in range(variations_per_prompt):
-                try:
-                    # Generate save path
-                    save_path = organizer.get_save_path(
-                        use_case="batch",
-                        filename_prefix=f"prompt{i+1:02d}_var{var+1}",
-                        file_format="png",
-                        batch_id=batch_id
-                    )
-                    
-                    # Generate image
-                    result = generate_image(
-                        prompt=final_prompt,
-                        model=selected_model,
-                        quality=selected_quality,
-                        size="1024x1024",
-                        save_path=save_path,
-                        n=1
-                    )
-                    
-                    results.append({
-                        "prompt_index": i + 1,
-                        "variation": var + 1,
-                        "prompt": base_prompt,
-                        "final_prompt": final_prompt,
-                        "result": "success",
-                        "details": result
-                    })
-                    
-                except Exception as e:
-                    logger.error(f"Failed to generate image for prompt {i+1}, variation {var+1}: {e}")
-                    failed_count += 1
-                    results.append({
-                        "prompt_index": i + 1,
-                        "variation": var + 1,
-                        "prompt": base_prompt,
-                        "result": "failed",
-                        "error": str(e)
-                    })
-        
-        # Create summary response
-        successful_count = total_images - failed_count
-        
-        response_parts = [
-            f"🚀 Batch generation completed!",
-            f"📊 Summary: {successful_count}/{total_images} images generated successfully",
-            f"📁 Batch ID: {batch_id}",
-            f"🤖 Model: {selected_model}",
-            f"⚡ Quality: {selected_quality}",
-            f"💰 Cost Level: {cost_info['cost_level']} ({cost_info['cost_type']})",
-            ""
-        ]
-        
-        if consistent_style:
-            response_parts.append(f"🎨 Consistent Style: {consistent_style}")
-            response_parts.append("")
-        
-        # Add detailed results
-        response_parts.append("📋 Detailed Results:")
-        for result in results:
-            if result["result"] == "success":
-                response_parts.append(f"✅ Prompt {result['prompt_index']}.{result['variation']}: {result['prompt']}")
-            else:
-                response_parts.append(f"❌ Prompt {result['prompt_index']}.{result['variation']}: {result['prompt']} - {result['error']}")
-        
-        if failed_count > 0:
-            response_parts.extend([
-                "",
-                f"⚠️ {failed_count} images failed to generate. Check logs for details.",
-                "💡 Tip: Simplify complex prompts or try a different model for better success rates."
-            ])
-        
-        response_parts.extend([
-            "",
-            f"📂 All images saved to: generated_images/batch_generations/{batch_id}/",
-            "💡 Tip: Use consistent_style parameter to maintain visual coherence across the batch."
-        ])
-        
-        return "\n".join(response_parts)
-        
-    except Exception as e:
-        logger.error(f"Error in batch_generate: {str(e)}", exc_info=True)
-        return f"❌ Error in batch generation: {str(e)}"
-
-@mcp.tool()
-def analyze_and_regenerate(
+def analyze_and_improve_image(
     image_path: str,
-    requirements: str,
-    preserve_elements: str = "",
-    max_iterations: int = 3
-) -> str:
-    """
-    Iterative image improvement based on requirements with structured feedback loop.
-    
-    When to use: When initial results need refinement
-    Provides cost-aware iteration limiting with analysis feedback.
+    improvement_goals: str,
+    session_id: Optional[str] = None,
+    preserve_elements: Optional[str] = None
+) -> Dict[str, Any]:
+    """Analyze existing image and generate improved version.
     
     Args:
-        image_path: Path to current image that needs improvement
-        requirements: What needs to be improved or changed
-        preserve_elements: Elements that should be kept unchanged
-        max_iterations: Maximum improvement iterations (1-5, default: 3)
-    
-    Examples:
-    - Improve quality: analyze_and_regenerate("draft.png", "make more professional and polished")
-    - Fix issues: analyze_and_regenerate("logo.png", "text needs to be more readable", preserve_elements="colors and overall design")
-    - Style adjustment: analyze_and_regenerate("portrait.png", "make it more artistic and painterly")
+        image_path: Path to image to analyze and improve
+        improvement_goals: What aspects to improve (quality, composition, style, etc.)
+        session_id: Optional session for context
+        preserve_elements: Elements to preserve during improvement
+        
+    Returns:
+        Analysis and improvement results
     """
-    logger.info(f"MCP TOOL CALLED: analyze_and_regenerate for '{image_path}'")
-    
     try:
-        # Validate inputs
-        if not os.path.exists(image_path):
-            return f"❌ Error: Image file not found: {image_path}"
-            
-        if not (1 <= max_iterations <= 5):
-            return f"❌ Error: max_iterations must be between 1 and 5"
-            
-        # Get helper instances
-        organizer = get_file_organizer()
+        # Validate input image
+        processor = get_image_processor()
+        validation = processor.validate_image_file(image_path)
+        if not validation["valid"]:
+            return {
+                "success": False,
+                "error": f"Invalid input image: {validation['errors']}",
+                "error_type": "invalid_input_image"
+            }
         
-        # Load metadata from original image if available
-        metadata_path = f"{os.path.splitext(image_path)[0]}_metadata.json"
-        original_metadata = {}
-        if os.path.exists(metadata_path):
-            try:
-                import json
-                with open(metadata_path, 'r') as f:
-                    original_metadata = json.load(f)
-                logger.info(f"Loaded original metadata from {metadata_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load metadata: {e}")
-        
-        # Extract original prompt if available
-        original_prompt = original_metadata.get("original_prompt", "")
-        if not original_prompt:
-            return f"❌ Error: Cannot find original prompt for iterative improvement. Original image metadata required."
-        
-        current_image_path = image_path
-        iteration_results = []
-        
-        for iteration in range(max_iterations):
-            logger.info(f"Starting iteration {iteration + 1}/{max_iterations}")
-            
-            # Build improvement prompt
-            improvement_parts = []
-            
-            if iteration == 0:
-                improvement_parts.append(f"Improve this image: {original_prompt}")
-            else:
-                improvement_parts.append(f"Further improve this image based on previous iteration")
-                
-            improvement_parts.append(f"Requirements: {requirements}")
-            
-            if preserve_elements:
-                improvement_parts.append(f"Preserve these elements: {preserve_elements}")
-                
-            # Add technical improvement instructions
-            improvement_parts.extend([
-                "higher quality, more professional",
-                "better composition and lighting",
-                "enhanced details and clarity"
-            ])
-            
-            improvement_prompt = ", ".join(improvement_parts)
-            
-            # Generate save path for this iteration
-            iteration_save_path = organizer.get_save_path(
-                use_case="edit",
-                filename_prefix=f"improved_iter{iteration+1}",
-                file_format="png"
-            )
-            
-            try:
-                # Use edit_image_advanced for iterative improvement
-                edit_result = edit_image_advanced(
-                    image_path=current_image_path,
-                    prompt=improvement_prompt,
-                    mode="style_transfer",
-                    save_path=iteration_save_path
-                )
-                
-                # Check if edit was successful
-                if "✅" in edit_result and os.path.exists(iteration_save_path):
-                    iteration_results.append({
-                        "iteration": iteration + 1,
-                        "status": "success",
-                        "image_path": iteration_save_path,
-                        "prompt": improvement_prompt,
-                        "result": edit_result
-                    })
-                    
-                    # Update current image for next iteration
-                    current_image_path = iteration_save_path
-                    
-                    # Save iteration metadata
-                    iteration_metadata = {
-                        **original_metadata,
-                        "improvement_iteration": iteration + 1,
-                        "improvement_requirements": requirements,
-                        "preserve_elements": preserve_elements,
-                        "improvement_prompt": improvement_prompt,
-                        "original_image": image_path,
-                        "previous_iteration": current_image_path if iteration > 0 else image_path
-                    }
-                    organizer.save_image_metadata(iteration_save_path, iteration_metadata)
-                    
-                else:
-                    # Failed iteration
-                    iteration_results.append({
-                        "iteration": iteration + 1,
-                        "status": "failed",
-                        "error": edit_result,
-                        "prompt": improvement_prompt
-                    })
-                    logger.error(f"Iteration {iteration + 1} failed: {edit_result}")
-                    break
-                    
-            except Exception as e:
-                iteration_results.append({
-                    "iteration": iteration + 1,
-                    "status": "failed", 
-                    "error": str(e),
-                    "prompt": improvement_prompt
-                })
-                logger.error(f"Exception in iteration {iteration + 1}: {e}")
-                break
-        
-        # Create comprehensive response
-        successful_iterations = [r for r in iteration_results if r["status"] == "success"]
-        failed_iterations = [r for r in iteration_results if r["status"] == "failed"]
-        
-        response_parts = [
-            f"🔄 Iterative improvement completed!",
-            f"📈 Successful iterations: {len(successful_iterations)}/{len(iteration_results)}",
-            f"🖼️ Original image: {image_path}",
-            f"🎯 Requirements: {requirements}",
+        # Build improvement prompt
+        prompt_parts = [
+            f"Improve this image by {improvement_goals}",
+            "maintain the core subject and composition"
         ]
         
         if preserve_elements:
-            response_parts.append(f"🔒 Preserved: {preserve_elements}")
-            
-        response_parts.append("")
+            prompt_parts.append(f"preserve the {preserve_elements}")
         
-        # Add iteration details
-        response_parts.append("📋 Iteration Results:")
-        for result in iteration_results:
-            if result["status"] == "success":
-                response_parts.append(f"✅ Iteration {result['iteration']}: {result['image_path']}")
-            else:
-                response_parts.append(f"❌ Iteration {result['iteration']}: {result['error']}")
-                
-        if successful_iterations:
-            final_image = successful_iterations[-1]["image_path"]
-            response_parts.extend([
-                "",
-                f"🎉 Final improved image: {final_image}",
-                f"📊 Total improvements: {len(successful_iterations)} iterations"
-            ])
-        else:
-            response_parts.extend([
-                "",
-                "❌ No successful iterations. Try simplifying requirements or using a different approach."
-            ])
-            
-        response_parts.extend([
-            "",
-            "💡 Tips for better results:",
-            "• Be specific about what needs improvement",
-            "• Use preserve_elements to maintain good aspects",
-            "• Lower max_iterations for cost control"
+        prompt_parts.extend([
+            "enhance quality and visual appeal",
+            "professional result"
         ])
         
-        return "\n".join(response_parts)
+        final_prompt = ", ".join(prompt_parts)
+        
+        # Use edit_image function
+        result = edit_image(
+            image_path=image_path,
+            prompt=final_prompt,
+            session_id=session_id,
+            quality="high"
+        )
+        
+        if result.get("success"):
+            result.update({
+                "improvement_goals": improvement_goals,
+                "preserved_elements": preserve_elements,
+                "analysis_summary": f"Improved {improvement_goals} while preserving {preserve_elements or 'original composition'}"
+            })
+        
+        return result
         
     except Exception as e:
-        logger.error(f"Error in analyze_and_regenerate: {str(e)}", exc_info=True)
-        return f"❌ Error in iterative improvement: {str(e)}"
+        logger.error(f"Failed to analyze and improve image: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "improvement_error"
+        }
+
+
+# Server statistics and management
 
 @mcp.tool()
-def get_usage_guide() -> str:
+def get_usage_guide() -> Dict[str, Any]:
+    """Get comprehensive usage guide for the image generation tools.
+    
+    Returns:
+        Complete usage guide with examples and best practices
     """
-    Retrieve comprehensive LLM usage guidelines and tool selection advice.
-    
-    When to use: When you need guidance on tool selection, usage patterns, or best practices
-    
-    This tool returns the complete LLM usage guide including:
-    - Quick decision tree for tool selection
-    - Parameter recommendations and examples
-    - Model selection guidelines
-    - Cost optimization tips
-    - Common patterns and best practices
-    
-    Use this tool when:
-    - Starting with the image generation tools
-    - Unsure which tool to use for a specific task
-    - Need parameter recommendations
-    - Want to optimize for cost or quality
-    - Looking for usage examples
-    """
-    logger.info("MCP TOOL CALLED: get_usage_guide")
-    
     try:
-        # Read the LLM.md file directly for single source of truth
+        # Read the LLM.md file
         script_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_root = os.path.dirname(os.path.dirname(script_dir))
-        llm_guide_path = os.path.join(workspace_root, "LLM.md")
+        guide_path = os.path.join(workspace_root, "LLM.md")
         
-        with open(llm_guide_path, 'r', encoding='utf-8') as f:
-            guide_content = f.read()
+        if os.path.exists(guide_path):
+            with open(guide_path, 'r', encoding='utf-8') as f:
+                guide_content = f.read()
             
-        logger.info(f"Successfully loaded LLM usage guide from {llm_guide_path}")
-        return guide_content
+            return {
+                "success": True,
+                "version": "2.0",
+                "architecture": "Session-based Conversational Image Generation",
+                "guide_content": guide_content,
+                "last_updated": "May 25, 2025",
+                "total_tools": 11,
+                "key_features": [
+                    "Multi-turn conversational sessions",
+                    "Advanced model access (GPT-4o, GPT-4.1)",
+                    "Context-aware image refinement", 
+                    "Organized file storage",
+                    "Reference image editing",
+                    "Specialized tools for products and UI"
+                ],
+                "quick_start": {
+                    "session_workflow": [
+                        "create_image_session('Project description')",
+                        "generate_image_in_session(session_id, 'initial prompt')",
+                        "generate_image_in_session(session_id, 'refinement')",
+                        "close_session(session_id)"
+                    ],
+                    "single_shot": [
+                        "generate_image('description')",
+                        "edit_image('/path/to/image.png', 'changes')",
+                        "generate_product_image('product description')"
+                    ]
+                }
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Usage guide file not found",
+                "error_type": "file_not_found",
+                "fallback_info": {
+                    "version": "2.0",
+                    "key_tools": [
+                        "create_image_session - Start conversational session",
+                        "generate_image_in_session - Generate with context",
+                        "generate_image - Quick single generations",
+                        "edit_image - Edit existing images",
+                        "generate_product_image - Product photography",
+                        "generate_ui_asset - UI/design assets",
+                        "get_session_status - Check session details",
+                        "list_active_sessions - See all sessions",
+                        "close_session - Close and cleanup"
+                    ]
+                }
+            }
             
-    except FileNotFoundError:
-        logger.error(f"LLM.md file not found at {llm_guide_path}")
-        return f"❌ Error: LLM usage guide file not found. Please ensure LLM.md exists in the project root."
     except Exception as e:
-        logger.error(f"Error in get_usage_guide: {str(e)}", exc_info=True)
-        return f"❌ Error retrieving usage guide: {str(e)}"
+        logger.error(f"Failed to get usage guide: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "guide_error"
+        }
+
+
+@mcp.tool()
+def promote_image_to_session(image_path: str, session_description: str, session_name: Optional[str] = None) -> Dict[str, Any]:
+    """Promote a one-shot generated image to a new conversational session.
+    
+    This creates a new session and reconstructs the conversation context from the image's
+    metadata, allowing you to continue refining the image with full conversational context.
+    
+    Args:
+        image_path: Path to the image to promote (must have metadata)
+        session_description: Description for the new session
+        session_name: Optional friendly name for the session
+        
+    Returns:
+        {
+            "success": true,
+            "session_id": "new-session-uuid",
+            "session_name": "Logo Design Session",
+            "original_context": {
+                "prompt": "original prompt",
+                "model": "gpt-4o",
+                "generation_params": {...}
+            },
+            "ready_for_refinement": true
+        }
+    """
+    try:
+        # Validate image exists
+        if not os.path.exists(image_path):
+            return {
+                "success": False,
+                "error": f"Image not found: {image_path}",
+                "error_type": "image_not_found"
+            }
+        
+        # Load image metadata
+        organizer = get_file_organizer()
+        metadata_path = image_path.replace('.png', '_metadata.json').replace('.jpg', '_metadata.json').replace('.jpeg', '_metadata.json')
+        
+        if not os.path.exists(metadata_path):
+            return {
+                "success": False,
+                "error": f"Image metadata not found. Cannot promote images without generation context.",
+                "error_type": "metadata_not_found",
+                "help": "Only images generated by this server can be promoted to sessions"
+            }
+        
+        try:
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to read metadata: {str(e)}",
+                "error_type": "metadata_read_error"
+            }
+        
+        # Extract original context
+        original_prompt = metadata.get('original_prompt') or metadata.get('prompt')
+        if not original_prompt:
+            return {
+                "success": False,
+                "error": "No original prompt found in metadata",
+                "error_type": "incomplete_metadata"
+            }
+        
+        # Create new session
+        manager = get_session_manager()
+        session = manager.create_session(
+            description=session_description,
+            model=metadata.get('model', 'gpt-4o'),
+            session_name=session_name
+        )
+        
+        # Reconstruct conversation context
+        builder = get_conversation_builder()
+        
+        # Add the original generation as conversation history
+        original_user_input = builder.build_user_input_from_params(prompt=original_prompt)
+        manager.add_conversation_turn(session.session_id, "user", original_user_input)
+        
+        # Create ImageGenerationCall from metadata
+        from .session_manager import ImageGenerationCall
+        import uuid
+        from datetime import datetime
+        
+        generation_call = ImageGenerationCall(
+            id=str(uuid.uuid4()),
+            prompt=original_prompt,
+            revised_prompt=metadata.get('revised_prompt', original_prompt),
+            image_path=image_path,
+            generation_params=metadata.get('generation_params', {}),
+            created_at=datetime.fromisoformat(metadata.get('created_at', datetime.now().isoformat()))
+        )
+        
+        # Add to session
+        manager.add_generated_image(session.session_id, generation_call)
+        
+        # Add assistant response to conversation
+        assistant_content = builder.format_assistant_response([generation_call])
+        manager.add_conversation_turn(session.session_id, "assistant", assistant_content)
+        
+        logger.info(f"Promoted image {image_path} to session {session.session_id}")
+        
+        return {
+            "success": True,
+            "session_id": session.session_id,
+            "session_name": session.session_name or session_description,
+            "session_description": session.description,
+            "original_context": {
+                "prompt": original_prompt,
+                "revised_prompt": metadata.get('revised_prompt'),
+                "model": metadata.get('model'),
+                "generation_params": metadata.get('generation_params', {}),
+                "created_at": metadata.get('created_at')
+            },
+            "promoted_image": {
+                "path": image_path,
+                "generation_id": generation_call.id
+            },
+            "ready_for_refinement": True,
+            "next_steps": [
+                f"Use generate_image_in_session('{session.session_id}', 'make it more...') to refine",
+                f"Use get_session_status('{session.session_id}') to check progress",
+                f"Use close_session('{session.session_id}') when done"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to promote image to session: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "promotion_error"
+        }
+
+
+@mcp.tool()
+def get_server_stats() -> Dict[str, Any]:
+    """Get server statistics and status.
+    
+    Returns:
+        Server statistics including active sessions, memory usage, etc.
+    """
+    try:
+        manager = get_session_manager()
+        stats = manager.get_stats()
+        
+        return {
+            "success": True,
+            "server_version": "2.0-responses-api",
+            "api_type": "OpenAI Responses API",
+            **stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get server stats: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": "stats_error"
+        }
+
 
 def main():
-    logger.info("Main function started. Basic logging to stderr is active.")
-
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.error("CRITICAL_MAIN: OPENAI_API_KEY environment variable is required. Server cannot start.")
-        return
-    
-    logger.info("Starting OpenAI Image MCP Server with FastMCP...")
-    
+    """Main entry point for the MCP server."""
     try:
-        mcp.run(transport="stdio")
-    except Exception as e_mcp_run:
-        logger.critical(f"CRITICAL_ERROR_MCP_RUN: mcp.run() failed catastrophically: {e_mcp_run}", exc_info=True)
-        # This error will go to stderr, which should be redirected.
-        raise 
-    finally:
-        logger.info("MCP server mcp.run() has exited or an unhandled exception occurred if not caught above.")
+        # Validate environment
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("CRITICAL_MAIN: OPENAI_API_KEY environment variable is required. Server cannot start.")
+            return
+        
+        logger.info("Starting OpenAI Image MCP Server v2.0 with Responses API")
+        
+        # Initialize global instances
+        get_session_manager()
+        get_responses_client()
+        get_conversation_builder()
+        get_file_organizer()
+        get_image_processor()
+        
+        logger.info("All components initialized successfully")
+        
+        # Run the MCP server
+        mcp.run()
+        
+    except Exception as e:
+        logger.error(f"CRITICAL_MAIN: Server startup failed: {e}")
+
 
 if __name__ == "__main__":
-    logger.info("Script execution started (__main__).") 
     main()

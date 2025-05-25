@@ -1,197 +1,107 @@
+![OpenAI Image MCP Hero](assets/hero-image.png)
+
 # OpenAI Image MCP Server
 
-A Model Context Protocol (MCP) server that provides comprehensive OpenAI image generation capabilities to LLM applications like Claude Desktop. Generate, edit, and create images using OpenAI's powerful image models with intelligent model selection and organized file management.
+A Model Context Protocol (MCP) server that provides conversational OpenAI image generation capabilities. Generate, edit, and refine images through multi-turn conversations with advanced models like GPT-4o and GPT-4.1.
 
-## 🌟 Features
+## 🎯 What Problems Does This Solve?
 
-- **🤖 Smart Model Selection**: Automatic selection of optimal models (GPT-Image-1, DALL-E 3, DALL-E 2) based on use case
-- **📁 Organized File Management**: Automatic categorization and metadata tracking for all generated images  
-- **🎯 Specialized Tools**: Purpose-built tools for products, UI assets, batch processing, and iterative improvement
-- **💰 Cost Optimization**: Budget-aware defaults and transparent cost estimation
-- **🔧 MCP-Compliant**: Built with the official Python MCP SDK using FastMCP
-- **📊 Progress Tracking**: Real-time feedback and structured responses
-- **🛡️ Robust Error Handling**: Comprehensive validation and informative error messages
-- **🎨 Multiple Edit Modes**: Inpainting, outpainting, variations, and style transfer
+### Traditional Image Generation Pain Points
 
-## 🛠️ Available Tools
+❌ **Single-shot limitations** - "Make it more blue" requires re-describing everything  
+❌ **No conversation memory** - Each request starts from scratch  
+❌ **Context loss** - Can't reference previous images naturally  
+❌ **Manual workflows** - Complex multi-step processes require multiple tools
 
-### Core Tools
+### Our Solution
 
-#### `generate_image`
-General-purpose image generation with intelligent model selection.
+✅ **Conversational refinement** - "Make it more blue" works naturally  
+✅ **Session memory** - Builds on previous context automatically  
+✅ **Reference awareness** - "Use the same style as the previous image"  
+✅ **Integrated workflows** - Single interface for complex creative projects
 
-**When to use:** Default choice for most image generation needs
+## 🚀 Key Capabilities
 
-**Parameters:**
-- `prompt` (required): Text description of desired image
-- `model`: "auto" | "gpt-image-1" | "dall-e-3" | "dall-e-2" (default: "auto")
-- `quality`: "auto" | "low" | "medium" | "high" | "hd" (default: "auto")
-- `size`: "auto" | specific dimensions (default: "auto")
-- `background`: "auto" | "transparent" (default: "auto")
-- `format`: "png" | "jpeg" | "webp" (default: "png")
+### 🔄 Session-Based Conversations
 
-**Examples:**
 ```python
-# Professional product photo
-generate_image("professional photo of wireless headphones", quality="high")
+# Start a focused session
+session = create_image_session("Logo design for tech startup")
 
-# Logo with transparent background  
-generate_image("minimal tech startup logo", background="transparent")
+# Initial generation
+result1 = generate_image_in_session(session_id, "modern tech logo")
 
-# Artistic illustration
-generate_image("children's book illustration of a friendly dragon", model="dall-e-3")
+# Natural refinement - no need to repeat everything
+result2 = generate_image_in_session(session_id, "make it more minimalist")
+
+# Build on context
+result3 = generate_image_in_session(session_id, "try it in dark blue")
 ```
 
-#### `edit_image_advanced`
-Sophisticated image editing with multiple modes.
+### 🔄 Hybrid Workflows
 
-**When to use:** For modifying existing images with advanced control
+Start simple, expand when needed:
 
-**Parameters:**
-- `image_path` (required): Path to source image
-- `prompt` (required): Edit instructions
-- `mode`: "inpaint" | "outpaint" | "variation" | "style_transfer" (default: "inpaint")
-- `mask_path`: Path to mask image (required for inpaint mode)
-- `model`: "auto" | "gpt-image-1" | "dall-e-2" (default: "auto")
-
-**Examples:**
 ```python
-# Remove object with mask
-edit_image_advanced("photo.jpg", "remove the car", mode="inpaint", mask_path="car_mask.png")
+# Quick one-shot for immediate need
+result = generate_image("modern office workspace")
 
-# Style transformation
-edit_image_advanced("photo.jpg", "make it look like a watercolor painting", mode="style_transfer")
+# Later, promote to session for refinement
+session = promote_image_to_session(
+    result["image_path"],
+    "Office workspace refinement project"
+)
 
-# Create variation
-edit_image_advanced("photo.jpg", "same scene, different lighting", mode="variation")
+# Continue with conversational context
+generate_image_in_session(session_id, "add more plants and warmer lighting")
 ```
 
-### Specialized Tools
+### 🎨 Specialized Tools
 
-#### `generate_product_image`
-Optimized for e-commerce and product photography.
+- **Product photography** - E-commerce optimized with multiple angles
+- **UI/UX assets** - Design elements with consistent styling
+- **Reference-based editing** - Use existing images as style guides
+- **Batch processing** - Multiple variations with consistent themes
 
-**When to use:** E-commerce, catalogs, product showcases
+## 🎯 Perfect For
 
-**Parameters:**
-- `product_description` (required): Detailed product description
-- `background_type`: "transparent" | "white" | "lifestyle" | "custom" (default: "white")
-- `angle`: "front" | "side" | "top" | "45deg" | "multiple" (default: "front")
-- `lighting`: "studio" | "natural" | "dramatic" (default: "studio")
-- `batch_count`: Number of variations 1-4 (default: 1)
+### LLM Applications
 
-#### `generate_ui_asset`
-Create UI/UX design assets optimized for web and apps.
+- **Claude Desktop integration** - Conversational image workflows
+- **AI assistants** - Contextual image generation capabilities
+- **Chatbots** - Visual content creation with memory
 
-**When to use:** Web/app design, UI components, interface elements
+### Creative Workflows
 
-**Parameters:**
-- `asset_type` (required): "icon" | "illustration" | "hero" | "background"
-- `description` (required): Asset details
-- `theme`: "light" | "dark" | "auto" (default: "auto")
-- `style_preset`: "flat" | "gradient" | "3d" | "outline" (default: "flat")
+- **Iterative design** - Refine concepts through conversation
+- **Brand development** - Consistent visual identity across assets
+- **Product visualization** - Multiple angles and contexts
+- **Content creation** - Blog headers, social media, presentations
 
-#### `batch_generate`
-Efficient bulk image generation with cost optimization.
+### Development Teams
 
-**When to use:** Multiple related images, A/B testing, content series
-
-**Parameters:**
-- `prompts` (required): JSON array of prompts or newline-separated
-- `variations_per_prompt`: 1-3 variations each (default: 1)
-- `consistent_style`: Style to maintain across batch
-- `model`: "auto" | specific model (default: "auto")
-
-#### `analyze_and_regenerate`
-Iterative image improvement with structured feedback.
-
-**When to use:** When initial results need refinement
-
-**Parameters:**
-- `image_path` (required): Current image to improve
-- `requirements` (required): What needs improvement
-- `preserve_elements`: Elements to keep unchanged
-- `max_iterations`: Iteration limit 1-5 (default: 3)
-
-### Utility Tools
-
-#### `get_usage_guide`
-Retrieve comprehensive LLM usage guidelines and tool selection advice.
-
-**When to use:** When you need guidance on tool selection or usage patterns
-
-## 🧠 Smart Model Selection
-
-The server automatically selects the optimal model based on your requirements:
-
-| Use Case | Auto-Selected Model | Quality | Rationale |
-|----------|-------------------|---------|-----------|
-| Text in images | GPT-Image-1 | High | Superior text rendering |
-| Product photos | GPT-Image-1 | High | Best realism and detail |
-| UI assets | GPT-Image-1 | Medium | Clean graphics, transparency |
-| Artistic content | DALL-E 3 | HD | Larger sizes, artistic styles |
-| Budget/batch | DALL-E 2 | Standard | Cost optimization |
-
-## 📁 File Organization
-
-Generated images are automatically organized:
-
-```
-workspace/
-├── generated_images/
-│   ├── general/              # General purpose images
-│   ├── products/             # Product photography
-│   │   └── [product_name]/   # Organized by product
-│   ├── ui_assets/            # UI/UX design assets
-│   │   ├── icons/
-│   │   ├── illustrations/
-│   │   ├── heroes/
-│   │   └── backgrounds/
-│   ├── batch_generations/    # Batch processing results
-│   │   └── [batch_id]/
-│   ├── edited_images/        # Edited/modified images
-│   └── variations/           # Image variations
-```
-
-Each image includes metadata with generation parameters, costs, and timestamps.
-
-> **Note:** The `generated_images/` directory is automatically created and excluded from version control (.gitignore).
+- **Rapid prototyping** - Quick UI mockups and concepts
+- **Documentation** - Visual aids and diagrams
+- **Marketing assets** - Consistent brand imagery
+- **User testing** - Visual variations for A/B testing
 
 ## 🚀 Quick Start
 
 ### 1. Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/your-username/openai-image-mcp.git
 cd openai-image-mcp
-
-# Install Poetry if not already installed
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Install dependencies
 poetry install
 ```
 
 ### 2. Configuration
 
-Set your OpenAI API key:
-
 ```bash
 export OPENAI_API_KEY="your_openai_api_key_here"
 ```
 
-### 3. Test the Server
-
-```bash
-# Test locally
-poetry run python examples/test_client.py
-
-# Or run the server directly
-poetry run python -m openai_image_mcp.server
-```
-
-### 4. Integration with Claude Desktop
+### 3. Claude Desktop Integration
 
 Add to your Claude Desktop MCP configuration:
 
@@ -210,167 +120,142 @@ Add to your Claude Desktop MCP configuration:
 }
 ```
 
-## 📖 Usage Examples
-
-### Smart Auto Mode (Recommended)
+### 4. Start Creating
 
 ```python
-# The server automatically selects the best model and parameters
-generate_image("professional headshot of a business executive")
-# → Uses GPT-Image-1, high quality, optimized settings
+# Create a session for your project
+session = create_image_session("Website hero images")
 
-generate_image("abstract artistic painting with vibrant colors")  
-# → Uses DALL-E 3, HD quality, artistic optimization
+# Generate with natural language
+generate_image_in_session(session_id, "modern tech office with diverse team")
 
-generate_image("simple app icon with rounded corners", background="transparent")
-# → Uses GPT-Image-1, medium quality, PNG with transparency
+# Refine naturally
+generate_image_in_session(session_id, "make the lighting warmer")
+
+# Add context
+generate_image_in_session(session_id, "create a mobile version of this scene")
 ```
 
-### Product Photography Workflow
+## 🛠️ Available Tools
+
+### Core Session Management
+
+- `create_image_session` - Start conversational session
+- `generate_image_in_session` - Generate with context awareness
+- `get_session_status` - View conversation history and progress
+- `close_session` - End session and cleanup
+
+### Image Generation & Editing
+
+- `generate_image` - General purpose (session optional)
+- `edit_image` - Modify existing images
+- `generate_product_image` - E-commerce optimized
+- `generate_ui_asset` - UI/UX design elements
+- `analyze_and_improve_image` - AI-powered image enhancement
+
+### Workflow Tools
+
+- `promote_image_to_session` - Upgrade one-shot to conversational
+- `list_active_sessions` - Manage multiple projects
+- `get_usage_guide` - Comprehensive tool documentation
+
+## 🎯 Usage Patterns
+
+### 📱 **Conversational Design Sessions** (Recommended)
+
+Best for: Multi-image projects, iterative refinement, brand consistency
 
 ```python
-# Generate multiple product shots
-generate_product_image(
-    product_description="wireless bluetooth headphones",
-    background_type="transparent", 
-    angle="multiple",
-    batch_count=3
-)
-# → Creates organized product folder with multiple angles
+session = create_image_session("App icon design")
+generate_image_in_session(session_id, "colorful chat app icon")
+generate_image_in_session(session_id, "make it more professional")
+generate_image_in_session(session_id, "try different color schemes")
 ```
 
-### UI Design Workflow
+### ⚡ **Quick One-Shot Generation**
+
+Best for: Immediate needs, single images, uncertain scope
 
 ```python
-# Create app icons
-generate_ui_asset(
-    asset_type="icon",
-    description="shopping cart with rounded modern design",
-    style_preset="flat",
-    theme="light"
-)
-
-# Generate hero images
-generate_ui_asset(
-    asset_type="hero", 
-    description="modern dashboard interface mockup",
-    dimensions="1200x600",
-    theme="dark"
-)
+generate_image("professional headshot for LinkedIn")
+generate_product_image("wireless headphones", background_type="white")
 ```
 
-### Batch Content Creation
+### 🔄 **Hybrid Start-Simple-Expand-Later**
+
+Best for: Testing concepts, uncertain requirements, flexible workflows
 
 ```python
-# Generate series with consistent style
-batch_generate(
-    prompts='["red sports car", "blue mountain bike", "green sailboat"]',
-    consistent_style="minimalist vector illustration",
-    variations_per_prompt=2
-)
+# Start quick
+result = generate_image("logo concept for bakery")
+
+# Expand when needed
+session = promote_image_to_session(result["image_path"], "Bakery brand development")
+generate_image_in_session(session_id, "create business card version")
 ```
 
-### Iterative Improvement
+## 🎨 Example Workflows
+
+### Brand Identity Development
 
 ```python
-# Improve image quality iteratively
-analyze_and_regenerate(
-    image_path="draft_logo.png",
-    requirements="make more professional and add subtle drop shadow",
-    preserve_elements="colors and overall shape",
-    max_iterations=3
-)
+session = create_image_session("TechCorp brand identity")
+
+# Logo concepts
+generate_image_in_session(session_id, "modern tech company logo")
+generate_image_in_session(session_id, "make it more geometric and minimal")
+
+# Expand to brand elements
+generate_image_in_session(session_id, "business card design using this logo")
+generate_image_in_session(session_id, "website header with the logo")
 ```
 
-## 🏗️ Architecture
+### Product Marketing Suite
 
-```
-openai-image-mcp/
-├── src/
-│   └── openai_image_mcp/
-│       ├── server.py           # Enhanced MCP server with 6 tools
-│       ├── image_agent.py      # OpenAI API integration
-│       ├── model_selector.py   # Intelligent model selection
-│       └── file_organizer.py   # Structured file management
-├── tests/                      # Comprehensive test suite
-│   ├── test_model_selector.py  # Model selection tests
-│   ├── test_file_organizer.py  # File organization tests
-│   └── test_enhanced_server_tools.py  # Enhanced tool tests
-├── LLM.md                      # LLM usage guidelines
-└── examples/
+```python
+session = create_image_session("Wireless headphones marketing")
+
+# Product shots
+generate_product_image("premium wireless headphones", angle="45deg")
+result = promote_image_to_session(previous_result["image_path"], "headphones campaign")
+
+# Marketing variations
+generate_image_in_session(session_id, "lifestyle shot with person using them")
+generate_image_in_session(session_id, "create packaging design mockup")
 ```
 
-## 🧪 Testing
+## 📚 Documentation
 
-Run the comprehensive test suite:
-
-```bash
-# Run all tests
-poetry run pytest
-
-# Test specific components
-poetry run pytest tests/test_model_selector.py
-poetry run pytest tests/test_file_organizer.py
-poetry run pytest tests/test_enhanced_server_tools.py
-
-# Run with coverage
-poetry run pytest --cov=src/openai_image_mcp
-```
-
-## 💡 Best Practices
-
-### For LLMs
-
-1. **Use "auto" mode** - Let the server select optimal settings
-2. **Be specific in prompts** - Detailed descriptions yield better results
-3. **Choose specialized tools** - Use purpose-built tools for better results
-4. **Consider cost** - Use batch processing for multiple related images
-
-### For Developers
-
-1. **Check metadata** - All images include generation metadata
-2. **Handle errors gracefully** - The server provides detailed error information
-3. **Monitor costs** - Use the cost estimation features
-4. **Organize files** - Leverage the automatic categorization system
+- **[LLM.md](LLM.md)** - Comprehensive guide for LLMs using this server
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Technical implementation, testing, and contribution guide
 
 ## 📋 Requirements
 
-- Python 3.10+
-- OpenAI API key with image generation access
+- Python 3.11+
+- OpenAI API key with GPT-4o/GPT-4.1 access
 - Poetry for dependency management
 
 ## 🔐 Environment Variables
 
-- `OPENAI_API_KEY` (required): Your OpenAI API key
-- `LOG_LEVEL` (optional): Logging level (default: INFO)
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **"Invalid model" errors**
-   - The server auto-selects models; use "auto" for model parameter
-
-2. **"Quality not supported" errors**  
-   - Different models support different quality levels; use "auto" for quality
-
-3. **File organization issues**
-   - The server creates directories automatically; ensure write permissions
-
-4. **Cost concerns**
-   - Use "auto" quality and batch processing for cost optimization
-   - Check cost estimates in responses
-
-## 📄 License
-
-MIT License
+- `OPENAI_API_KEY` (required) - Your OpenAI API key
+- `MCP_MAX_SESSIONS` (optional) - Maximum concurrent sessions (default: 100)
+- `MCP_SESSION_TIMEOUT` (optional) - Session timeout in seconds (default: 3600)
 
 ## 🤝 Contributing
 
-Contributions welcome! Please submit a Pull Request.
+We welcome contributions! Please see [DEVELOPMENT.md](DEVELOPMENT.md) for:
 
-## 🔗 Related Projects
+- Technical architecture details
+- Development setup instructions
+- Testing guidelines
+- Code style requirements
 
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [OpenAI Python SDK](https://github.com/openai/openai-python)
-- [Claude Desktop](https://claude.ai/desktop)
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔗 Related Resources
+
+- [Model Context Protocol](https://modelcontextprotocol.io/) - Protocol specification
+- [OpenAI Responses API](https://platform.openai.com/docs/guides/responses) - Underlying API
+- [Claude Desktop](https://claude.ai/desktop) - Primary integration target

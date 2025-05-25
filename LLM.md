@@ -1,390 +1,590 @@
 # LLM Usage Guide: OpenAI Image Generation MCP Tools
 
-**Version:** 1.0  
-**Updated:** January 24, 2025  
+**Updated:** May 25, 2025  
+**Architecture:** Session-based Conversational Image Generation using OpenAI Responses API  
 **For:** Large Language Models using the OpenAI Image MCP Server
 
-## Quick Decision Tree
+## 🚀 Key Features
 
-**Start here for tool selection:**
+### Session-Based Conversations
+- **Multi-turn image generation** with persistent context
+- **Iterative refinement** through conversation
+- **Context awareness** - images improve based on previous generations
+- **Advanced models** - GPT-4o, GPT-4.1 with image generation tools
 
-1. 🆕 **Need to create a new image?** → `generate_image`
-2. ✏️ **Need to modify existing image?** → `edit_image_advanced`  
-3. 🛍️ **Creating product photos?** → `generate_product_image`
-4. 🎨 **Making UI/web assets?** → `generate_ui_asset`
-5. 📚 **Need multiple images?** → `batch_generate`
-6. 🔄 **Image needs improvement?** → `analyze_and_regenerate`
-7. ❓ **Need usage guidance?** → `get_usage_guide`
+### Powerful New Capabilities
+- **Conversational workflows** - "Make it more blue" references previous image
+- **Session memory** - Context preserved across multiple tool calls
+- **Advanced editing** - Reference previous images for consistency
+- **Better quality** - GPT-4o provides superior results
 
-## Core Principles
+## 🎯 Quick Decision Tree
 
-### 1. Embrace "Auto" Mode
-- **Default to "auto"** for model, quality, and size parameters
-- The server intelligently selects optimal settings based on your requirements
-- Only specify explicit values when you have specific needs
+**Choose your approach:**
 
-### 2. Be Specific in Prompts
-- **Good:** "Professional product photo of wireless noise-canceling headphones on white background with soft studio lighting"
-- **Poor:** "Picture of headphones"
+### 🔄 Multi-turn Projects (Recommended)
+1. **Start session** → `create_image_session`
+2. **Generate in session** → `generate_image_in_session`
+3. **Refine iteratively** → `generate_image_in_session` (with feedback)
+4. **Manage sessions** → `get_session_status`, `list_active_sessions`, `close_session`
 
-### 3. Use Specialized Tools
-- Don't use `generate_image` for everything
-- Specialized tools provide better results for their use cases
+### ⚡ Single-shot Generation (Quick Tasks)
+1. **General images** → `generate_image`
+2. **Edit existing** → `edit_image`
+3. **Product photos** → `generate_product_image`
+4. **UI assets** → `generate_ui_asset`
+5. **Improve images** → `analyze_and_improve_image`
 
-### 4. Consider Cost
-- Batch operations are more cost-effective
-- "auto" quality balances cost and quality
-- GPT-Image-1 uses token-based pricing, DALL-E uses fixed pricing
+### 🔄 Hybrid Workflow: Promote One-Shot to Session
+**Best of both worlds** - Start quick, expand when needed:
+6. **Promote to session** → `promote_image_to_session` (bridges one-shot and conversational workflows)
 
-## Tool Reference Guide
+### 📊 Server Management
+- **Server stats** → `get_server_stats`
+- **Usage guidance** → `get_usage_guide`
 
-### `generate_image` - Your Primary Tool
+## 💡 Core Principles
 
-**When to use:**
-- General image generation
-- Single images
-- When unsure which specialized tool to use
+### 1. Sessions Enable Context
+- **Best Practice:** Use sessions for any project requiring multiple images or refinements
+- **Benefit:** Each generation builds on previous context
+- **Example:** "Make it more minimalist" - system knows what "it" refers to
 
-**Key Parameters:**
-```
-prompt (required): Be detailed and specific
-model: "auto" (recommended) | "gpt-image-1" | "dall-e-3" | "dall-e-2"
-quality: "auto" (recommended) | "low" | "medium" | "high" | "hd"
-background: "auto" | "transparent" (for logos/icons)
-format: "png" (default) | "jpeg" | "webp"
-```
+### 2. Advanced Models by Default
+- **Default Model:** GPT-4o (best quality and capabilities)
+- **Alternative:** GPT-4.1 (advanced features), GPT-4o-mini (cost-effective)
+- **Auto-selection:** System chooses optimal model for your task
 
-**Smart Defaults:**
-- Model selection based on prompt analysis
-- Quality optimization for use case
-- Cost-aware parameter selection
+### 3. Conversation-Driven Refinement
+- **Iterative:** Start rough, refine through conversation
+- **Natural Language:** "Make it bluer", "Add more contrast", "Try a different angle"
+- **Context Aware:** System remembers what you're working on
 
-**Examples:**
+### 4. Organized Output
+- **Automatic:** All images saved to organized folders
+- **Metadata:** Rich metadata saved with each generation
+- **Tracking:** Session history and generation lineage preserved
+
+## 🛠️ Session-Based Workflow (Recommended)
+
+### Starting a New Project
+
 ```python
-# Let the server optimize everything
-generate_image("sunset landscape with mountains")
-
-# Specify requirements
-generate_image("company logo with transparent background", 
-               background="transparent", quality="high")
-
-# Force specific model for artistic work
-generate_image("abstract watercolor painting", model="dall-e-3")
+# Create a session for your project
+create_image_session(
+    description="Logo design for tech startup",
+    model="gpt-4o",  # or "auto"
+    session_name="TechCorp Logo Project"
+)
+# Returns: {"session_id": "uuid-123", "status": "active", ...}
 ```
 
-### `edit_image_advanced` - For Image Modifications
+### Generating and Refining Images
 
-**When to use:**
-- Modifying existing images
-- Removing/adding objects
-- Style transformations
-- Creating variations
-
-**Modes:**
-- **"inpaint"**: Replace specific areas (requires mask)
-- **"outpaint"**: Extend image boundaries  
-- **"variation"**: Create similar versions
-- **"style_transfer"**: Apply artistic styles
-
-**Examples:**
 ```python
-# Remove object (requires mask)
-edit_image_advanced("photo.jpg", "remove the car", 
-                   mode="inpaint", mask_path="car_mask.png")
+# Generate initial image with context
+generate_image_in_session(
+    session_id="uuid-123",
+    prompt="Modern minimalist logo for AI company"
+)
 
-# Style transformation
-edit_image_advanced("portrait.jpg", "make it look like a Renaissance painting", 
-                   mode="style_transfer")
+# Refine based on result (system knows context)
+generate_image_in_session(
+    session_id="uuid-123", 
+    prompt="Make it more geometric and add blue accent colors"
+)
 
-# Create variation
-edit_image_advanced("logo.png", "same design but with blue color scheme", 
-                   mode="variation")
+# Further refinement (builds on previous context)
+generate_image_in_session(
+    session_id="uuid-123",
+    prompt="Perfect! Now create a horizontal version for headers"
+)
 ```
 
-### `generate_product_image` - For E-commerce
+### Advanced Session Features
 
-**When to use:**
-- Product photography
-- E-commerce listings
-- Catalog images
-- Marketing materials
+```python
+# Reference previous images for editing
+generate_image_in_session(
+    session_id="uuid-123",
+    prompt="Remove the background to make it transparent",
+    reference_image_path="/path/to/previous/image.png"
+)
 
-**Key Features:**
-- Automatically uses GPT-Image-1 for best realism
-- Organized file storage by product
-- Professional photography optimization
+# Inpainting with mask
+generate_image_in_session(
+    session_id="uuid-123", 
+    prompt="Replace the text with 'TechCorp'",
+    reference_image_path="/path/to/logo.png",
+    mask_image_path="/path/to/text_mask.png"
+)
+```
 
-**Background Types:**
-- **"transparent"**: For product cutouts, overlays
-- **"white"**: Clean, professional backgrounds
-- **"lifestyle"**: Products in real-world settings
-- **"custom"**: Specify in prompt
+### Hybrid Workflow: Start Simple, Expand Later
 
-**Examples:**
+```python
+# 1. Quick one-shot for immediate need
+result = generate_image("modern office workspace") 
+# Returns: {"image_path": "/path/to/office.png", "single_shot": true}
+
+# 2. Later, decide you want to refine it
+session = promote_image_to_session(
+    image_path=result["image_path"],
+    session_description="Office workspace refinement project",
+    session_name="Office Design Session"
+)
+# Returns: {"session_id": "uuid-456", "ready_for_refinement": true}
+
+# 3. Now refine with full conversational context  
+result2 = generate_image_in_session(
+    session["session_id"],
+    "make it more colorful and add some plants"
+)
+
+# 4. Continue iterating with natural language
+result3 = generate_image_in_session(
+    session["session_id"],
+    "add a coffee machine in the corner and warmer lighting"
+)
+```
+
+**Perfect for:**
+- Testing concepts before committing to full sessions
+- Quick deliverables that might need refinement later  
+- Uncertain scope projects
+- Bridging ad-hoc requests with structured workflows
+
+### Session Management
+
+```python
+# Check session status
+get_session_status("uuid-123")
+# Returns: conversation summary, recent images, activity
+
+# List all active sessions
+list_active_sessions()
+# Returns: all your active sessions
+
+# Close when done
+close_session("uuid-123")
+# Returns: final image count and cleanup confirmation
+```
+
+## ⚡ Single-Shot Tools (Quick Tasks)
+
+### `generate_image` - General Purpose
+
+**Best for:** Quick single images, testing ideas
+
+```python
+# Auto-optimized generation
+generate_image("sunset over mountain lake")
+
+# With specific requirements  
+generate_image(
+    prompt="company logo with transparent background",
+    quality="high",
+    background="transparent",
+    size="1024x1024"
+)
+
+# With session context (optional)
+generate_image(
+    prompt="landscape painting", 
+    session_id="uuid-123"  # Adds to existing session
+)
+```
+
+### `edit_image` - Image Modifications
+
+**Best for:** Quick edits, one-off modifications
+
+```python
+# Basic editing
+edit_image(
+    image_path="/path/to/image.png",
+    prompt="make the sky more dramatic"
+)
+
+# With session context
+edit_image(
+    image_path="/path/to/image.png", 
+    prompt="apply the same style as our previous images",
+    session_id="uuid-123"
+)
+
+# Inpainting with mask
+edit_image(
+    image_path="/path/to/image.png",
+    prompt="remove the person",
+    mask_path="/path/to/person_mask.png"
+)
+```
+
+## 🎨 Specialized Tools
+
+### `generate_product_image` - E-commerce Focused
+
+**Optimized for:** Product photography, commercial use
+
 ```python
 # Clean product shot
-generate_product_image("wireless mouse", background_type="white", 
-                      angle="45deg", lighting="studio")
+generate_product_image(
+    product_description="wireless noise-canceling headphones",
+    background_type="white",      # "white", "transparent", "lifestyle"
+    angle="three-quarter",        # "front", "side", "three-quarter", "top"
+    lighting="studio",            # "studio", "natural", "dramatic", "soft"
+    batch_count=3                 # Generate variations
+)
 
 # Lifestyle scene
-generate_product_image("coffee mug", background_type="lifestyle", 
-                      props="coffee beans, wooden table, morning light")
-
-# Multiple angles for catalog
-generate_product_image("smartphone", angle="multiple", batch_count=3)
+generate_product_image(
+    product_description="ceramic coffee mug",
+    background_type="lifestyle", 
+    session_id="uuid-123"        # Add to existing session
+)
 ```
 
-### `generate_ui_asset` - For Design Assets
+### `generate_ui_asset` - Design Assets
 
-**When to use:**
-- App/web design
-- Icons and illustrations
-- Hero images
-- UI components
+**Optimized for:** UI/UX design, web assets
 
-**Asset Types:**
-- **"icon"**: App icons, interface icons (auto-sized to 512x512)
-- **"illustration"**: Detailed graphics (1024x1024)
-- **"hero"**: Banner/header images (1200x600)
-- **"background"**: UI backgrounds (1920x1080)
-
-**Style Presets:**
-- **"flat"**: Modern flat design
-- **"gradient"**: Gradient effects
-- **"3d"**: Subtle depth and shadows
-- **"outline"**: Line art style
-
-**Examples:**
 ```python
 # App icon
-generate_ui_asset("icon", "shopping cart with rounded modern design", 
-                 style_preset="flat", theme="light")
+generate_ui_asset(
+    asset_type="icon",            # "icon", "illustration", "background", "hero"
+    description="shopping cart with modern design",
+    theme="modern",               # "modern", "classic", "minimal", "playful"
+    style_preset="flat",          # "flat", "3d", "outline", "filled"
+    size_preset="standard"        # "small", "standard", "large"
+)
 
 # Hero image
-generate_ui_asset("hero", "team collaboration in modern office", 
-                 dimensions="1200x600", theme="light")
-
-# Background pattern
-generate_ui_asset("background", "subtle geometric pattern", 
-                 style_preset="gradient", theme="dark")
+generate_ui_asset(
+    asset_type="hero",
+    description="team collaboration in modern office",
+    theme="minimal",
+    session_id="uuid-123"         # Part of design system session
+)
 ```
 
-### `batch_generate` - For Multiple Images
+### `analyze_and_improve_image` - AI-Powered Enhancement
 
-**When to use:**
-- Content series
-- A/B testing variations
-- Multiple related images
-- Social media content
+**Best for:** Quality improvement, fixing issues
 
-**Input Formats:**
-- JSON array: `'["prompt1", "prompt2", "prompt3"]'`
-- Newline-separated: `"prompt1\nprompt2\nprompt3"`
-
-**Key Features:**
-- Cost optimization for bulk generation
-- Consistent styling across batch
-- Organized output folders
-- Progress tracking
-
-**Examples:**
 ```python
-# Social media series
-batch_generate('["Monday motivation quote", "Tuesday tip", "Wednesday wisdom"]',
-               consistent_style="minimalist typography on pastel background")
+# General improvement
+analyze_and_improve_image(
+    image_path="/path/to/image.png",
+    improvement_goals="enhance quality and make more professional",
+    preserve_elements="composition and color scheme"
+)
 
-# Product variations
-batch_generate('["red sports car", "blue sports car", "green sports car"]',
-               variations_per_prompt=2, model="dall-e-3")
-
-# A/B testing
-batch_generate('["CTA button - primary blue", "CTA button - success green"]',
-               variations_per_prompt=3)
+# Specific fixes with session context
+analyze_and_improve_image(
+    image_path="/path/to/draft.png",
+    improvement_goals="improve lighting and add more contrast", 
+    session_id="uuid-123"        # Maintains design consistency
+)
 ```
 
-### `analyze_and_regenerate` - For Iterative Improvement
+## 🎯 Model Selection Guide
 
-**When to use:**
-- Initial results need refinement
-- Quality improvement
-- Fixing specific issues
-- Iterative design process
-
-**Best Practices:**
-- Be specific about what needs improvement
-- Use `preserve_elements` to maintain good aspects
-- Set appropriate `max_iterations` for cost control
-
-**Examples:**
+### Automatic Selection (Recommended)
 ```python
-# Improve quality
-analyze_and_regenerate("draft_logo.png", 
-                      "make more professional and polished",
-                      preserve_elements="colors and overall layout")
+# Let the system choose optimal model
+create_image_session(description="Logo design")  # Uses GPT-4o by default
 
-# Fix specific issues
-analyze_and_regenerate("portrait.jpg",
-                      "improve lighting and make eyes more prominent",
-                      max_iterations=2)
+# Explicit auto-selection
+create_image_session(description="Product photos", model="auto")
 ```
 
-## Model Selection Cheat Sheet
+### Manual Selection
+| **Model** | **Best For** | **Capabilities** |
+|-----------|--------------|------------------|
+| **GPT-4o** | General use, highest quality | Superior instruction following, text rendering, detail |
+| **GPT-4.1** | Advanced features | Latest capabilities, experimental features |
+| **GPT-4o-mini** | Cost-effective | Good quality at lower cost |
+| **o3** | Future use | Next-generation capabilities (when available) |
 
-| **Need** | **Use Model** | **Why** |
-|----------|---------------|---------|
-| Text in images | GPT-Image-1 | Superior text rendering |
-| Product photos | GPT-Image-1 | Best realism and detail |
-| UI/icons | GPT-Image-1 | Clean graphics, transparency |
-| Artistic images | DALL-E 3 | Artistic styles, larger sizes |
-| Budget option | DALL-E 2 | Most cost-effective |
-| Batch generation | DALL-E 2 | Cost optimization |
-| **Default choice** | **"auto"** | **Smart selection** |
+## 🔄 Conversation Patterns
 
-## Quality Guidelines
-
-| **Quality** | **Use For** | **Cost** |
-|-------------|-------------|----------|
-| "auto" | Most cases | Optimized |
-| "low" | Drafts, testing | Lowest |
-| "medium" | Social media, web | Balanced |
-| "high" | Professional, print | Higher |
-| "hd" | Premium output | Highest |
-
-## Cost Optimization Tips
-
-### 1. Smart Defaults
-- Use "auto" for model and quality
-- Let the server optimize parameters
-
-### 2. Batch Processing
-- Use `batch_generate` for multiple related images
-- More cost-effective than individual calls
-
-### 3. Quality Selection
-- "auto" quality balances cost and output
-- Only use "high"/"hd" when necessary
-
-### 4. Model Awareness
-- **GPT-Image-1**: Token-based (varies with complexity)
-- **DALL-E 3**: Fixed per image (higher cost)
-- **DALL-E 2**: Fixed per image (lower cost)
-
-## Common Patterns
-
-### Logo Design
+### Progressive Refinement
 ```python
-generate_image("minimalist logo for tech startup", 
-               background="transparent", quality="high", format="png")
+# Session 1: Initial concept
+create_image_session("Logo design exploration")
+generate_image_in_session(session_id, "modern tech logo")
+
+# Session 2: Style direction  
+generate_image_in_session(session_id, "make it more minimalist")
+
+# Session 3: Color refinement
+generate_image_in_session(session_id, "try it in blue and white")
+
+# Session 4: Final adjustments
+generate_image_in_session(session_id, "perfect! now make a horizontal version")
 ```
 
-### Social Media Content
+### Design System Development
 ```python
-batch_generate('["Monday motivation", "Tuesday tip", "Wednesday wisdom"]',
-               consistent_style="Instagram post, colorful gradient background")
+# Create session for design system
+create_image_session("Mobile app UI design system", session_name="AppUI v2")
+
+# Generate primary components
+generate_image_in_session(session_id, "primary button with rounded corners")
+generate_image_in_session(session_id, "secondary button in same style")
+generate_image_in_session(session_id, "icon set matching this aesthetic")
 ```
 
-### Product Catalog
+### Product Catalog Creation
 ```python
-generate_product_image("product name", background_type="white", 
-                      angle="multiple", batch_count=4)
+# Session for product line
+create_image_session("Wireless audio product catalog")
+
+# Generate different products with consistent style
+generate_product_image("wireless earbuds", session_id=session_id)
+generate_product_image("over-ear headphones", session_id=session_id) 
+generate_product_image("bluetooth speaker", session_id=session_id)
 ```
 
-### Website Assets
-```python
-# Hero image
-generate_ui_asset("hero", "modern team working together", 
-                 dimensions="1200x600")
+## 📁 File Organization
 
-# Icons
-generate_ui_asset("icon", "download symbol", style_preset="outline")
-```
-
-### Image Improvement
-```python
-analyze_and_regenerate("draft.png", "make more professional",
-                      preserve_elements="composition and colors")
-```
-
-## Error Handling
-
-### Common Issues & Solutions
-
-1. **"Invalid model" errors**
-   - Use "auto" instead of specific model names
-   - Let the server choose optimal models
-
-2. **"Quality not supported" errors**
-   - Use "auto" for quality parameter
-   - Different models support different quality levels
-
-3. **File not found errors**
-   - Ensure image paths are correct
-   - Check file permissions
-
-4. **Content policy violations**
-   - Revise prompts to avoid restricted content
-   - Be more specific and professional in descriptions
-
-## File Organization
-
-Generated images are automatically organized:
+The system automatically organizes generated images:
 
 ```
 workspace/generated_images/
-├── general/           # generate_image outputs
-├── products/          # generate_product_image outputs
-│   └── [product]/     # Organized by product name
-├── ui_assets/         # generate_ui_asset outputs
+├── general/                    # generate_image outputs
+│   └── session_abc123_*.png   # Organized by session
+├── products/                   # generate_product_image outputs  
+│   └── [product_name]/        # Grouped by product
+├── ui_assets/                  # generate_ui_asset outputs
 │   ├── icons/
 │   ├── illustrations/
+│   ├── backgrounds/
 │   └── heroes/
-├── batch_generations/ # batch_generate outputs
-│   └── [batch_id]/
-├── edited_images/     # edit_image_advanced outputs
-└── variations/        # Image variations
+├── edited_images/              # edit_image outputs
+├── batch_generations/          # Batch operations
+└── variations/                 # Image variations
 ```
 
-## Best Practices Summary
+### Metadata Files
+Each image includes rich metadata:
+```json
+{
+  "session_id": "uuid-123",
+  "generation_call_id": "ig_456", 
+  "original_prompt": "modern logo",
+  "revised_prompt": "A modern, minimalist logo design...",
+  "model": "gpt-4o",
+  "conversation_length": 5,
+  "created_at": "2025-05-25T10:30:00Z"
+}
+```
 
-### ✅ Do This
-- Use "auto" mode as default
-- Be specific and detailed in prompts
-- Choose specialized tools for specific use cases
-- Use batch processing for multiple images
-- Check generated metadata for insights
-- Leverage automatic file organization
+## 💰 Cost Optimization
 
-### ❌ Avoid This
-- Generic, vague prompts
-- Forcing specific models without reason
-- Using `generate_image` for everything
-- Ignoring cost implications
-- Requesting unsupported parameter combinations
+### Session-Based Efficiency
+- **Context Reuse:** Build on previous generations instead of starting fresh
+- **Targeted Refinements:** "Make it bluer" vs regenerating completely
+- **Batch Context:** Multiple related images in same session share context
 
-## Quick Reference
+### Smart Quality Settings
+```python
+# Auto-optimized (recommended)
+generate_image_in_session(session_id, prompt, quality="auto")
 
-```markdown
-# Most Common Patterns
+# Explicit quality for specific needs
+generate_image_in_session(session_id, prompt, quality="high")  # Premium output
+generate_image_in_session(session_id, prompt, quality="medium") # Balanced
+```
 
-# General image
-generate_image("detailed prompt here")
+## 🛠️ Advanced Features
 
-# Logo/icon
-generate_image("logo description", background="transparent")
+### Reference Images
+```python
+# Use previous generation as reference
+generate_image_in_session(
+    session_id="uuid-123",
+    prompt="same style but different color",
+    reference_image_path="/path/to/previous.png"
+)
+```
 
-# Product photo
-generate_product_image("product description", background_type="white")
+### Inpainting and Masking
+```python
+# Selective editing with masks
+generate_image_in_session(
+    session_id="uuid-123", 
+    prompt="change the background to a sunset",
+    reference_image_path="/path/to/image.png",
+    mask_image_path="/path/to/background_mask.png"
+)
+```
 
-# UI asset
-generate_ui_asset("icon", "icon description", style_preset="flat")
+### Session Continuation
+```python
+# Resume work on existing session
+sessions = list_active_sessions()
+session_id = sessions["sessions"][0]["session_id"]
 
-# Multiple images
-batch_generate('["prompt1", "prompt2"]', consistent_style="style description")
+# Continue where you left off
+generate_image_in_session(session_id, "let's try a different approach")
+```
 
-# Improve image
-analyze_and_regenerate("image.png", "improvement description")
+## 🔧 Best Practices
+
+### ✅ Recommended Workflow
+
+1. **Start with Sessions** for any multi-image project
+2. **Use Natural Language** for refinements ("make it more X")
+3. **Build Iteratively** - start rough, refine through conversation
+4. **Leverage Context** - reference "the previous image" naturally
+5. **Use Specialized Tools** for specific domains (product, UI)
+6. **Monitor Sessions** - check status and manage active sessions
+
+### 📋 Common Patterns
+
+#### Logo Design Session
+```python
+session = create_image_session("Logo design for TechCorp")
+generate_image_in_session(session_id, "modern tech company logo")
+generate_image_in_session(session_id, "make it more geometric")
+generate_image_in_session(session_id, "add blue gradient") 
+generate_image_in_session(session_id, "create transparent background version")
+```
+
+#### Product Photography Session
+```python
+session = create_image_session("Product catalog for wireless headphones")
+generate_product_image("wireless headphones", session_id=session_id, angle="front")
+generate_product_image("same headphones", session_id=session_id, angle="side")
+generate_image_in_session(session_id, "lifestyle shot with person wearing them")
+```
+
+#### UI Design System Session
+```python
+session = create_image_session("Mobile app UI components")
+generate_ui_asset("icon", "home icon", session_id=session_id)
+generate_ui_asset("icon", "profile icon in same style", session_id=session_id)
+generate_ui_asset("button", "primary button matching icons", session_id=session_id)
+```
+
+### ❌ Common Mistakes
+
+- **Not using sessions** for related images (misses context benefits)
+- **Too vague prompts** - "make it better" vs "increase contrast and saturation"
+- **Forgetting session_id** when you want context
+- **Creating too many sessions** - group related work together
+- **Not closing sessions** when done (resource waste)
+
+## 📊 Session Management
+
+### Monitoring Active Sessions
+```python
+# See all your sessions
+sessions = list_active_sessions()
+print(f"You have {sessions['total_active']} active sessions")
+
+# Check specific session details
+status = get_session_status("uuid-123")
+print(f"Session has {status['total_generations']} images")
+```
+
+### Resource Management
+```python
+# Close completed sessions
+close_session("uuid-123")
+
+# Check server resource usage
+stats = get_server_stats()
+print(f"Server has {stats['active_sessions']} sessions active")
+```
+
+## 🆘 Troubleshooting
+
+### Session Issues
+- **"Session not found"** - Check session_id, session may have expired
+- **"Max sessions reached"** - Close unused sessions with `close_session`
+- **"Session timeout"** - Sessions expire after 1 hour of inactivity
+
+### Generation Issues  
+- **"Invalid parameters"** - Use "auto" for model/quality when unsure
+- **"Content policy violation"** - Refine prompt to be more specific/professional
+- **"No context available"** - Ensure you're using correct session_id
+
+### File Issues
+- **"Image not found"** - Check file paths, ensure images exist
+- **"Invalid mask"** - Mask must be same size as reference image
+- **"Upload failed"** - Check file size (25MB limit) and format
+
+## 🎯 Quick Reference
+
+### Essential Session Workflow
+```python
+# 1. Start session
+session = create_image_session("Project description")
+
+# 2. Generate and refine
+generate_image_in_session(session["session_id"], "initial prompt")
+generate_image_in_session(session["session_id"], "refinement instruction")
+
+# 3. Clean up
+close_session(session["session_id"])
+```
+
+### Single-Shot Quick Tasks
+```python
+# Quick image
+generate_image("description")
+
+# Quick edit  
+edit_image("/path/to/image.png", "change description")
+
+# Specialized generation
+generate_product_image("product description")
+generate_ui_asset("icon", "icon description")
+```
+
+### Server Management
+```python
+# Check resources
+get_server_stats()
+
+# Get help
+get_usage_guide()
 ```
 
 ---
 
-**Remember:** When in doubt, use "auto" mode and let the server optimize for you. The intelligent selection system is designed to provide the best results with minimal configuration.
+## 🚀 Getting Started
+
+**New to v2.0?** Start with a simple session:
+
+```python
+# Create your first session
+session = create_image_session("Testing the new system")
+
+# Generate an image
+result = generate_image_in_session(
+    session["session_id"], 
+    "a beautiful sunset over mountains"
+)
+
+# Refine it naturally
+result2 = generate_image_in_session(
+    session["session_id"],
+    "make the colors more vibrant"
+)
+
+# Check your session
+status = get_session_status(session["session_id"])
+
+# Close when done
+close_session(session["session_id"])
+```
+
+The session-based approach enables natural, conversational image generation that builds on context for superior results. Start with sessions for any project involving multiple images or refinements!
+
+---
+
+**Remember:** Sessions are your superpower. Use them for any project requiring multiple images, refinements, or consistency across generations. The conversation-driven approach produces dramatically better results than isolated single-shot generations.
