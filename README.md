@@ -2,6 +2,8 @@
 
 # OpenAI Image MCP Server
 
+[![PyPI version](https://badge.fury.io/py/openai-image-mcp.svg)](https://badge.fury.io/py/openai-image-mcp)
+
 A Model Context Protocol (MCP) server that provides conversational OpenAI image generation capabilities. Generate, edit, and refine images through multi-turn conversations with advanced models like GPT-4o and GPT-4.1.
 
 ## 🎯 What Problems Does This Solve?
