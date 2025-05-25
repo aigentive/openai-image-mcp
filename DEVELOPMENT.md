@@ -458,4 +458,78 @@ result = get_server_stats()
 # Monitor: active_sessions, memory_usage, api_health
 ```
 
+## 📦 Publishing & Release
+
+### Publishing to PyPI
+
+**Prerequisites:**
+- PyPI account with 2FA enabled
+- API token configured
+- Poetry installed
+
+**Release Process:**
+
+1. **Update Version**
+   ```bash
+   # Update version in pyproject.toml
+   poetry version patch  # or minor/major
+   ```
+
+2. **Build Package**
+   ```bash
+   # Clean previous builds
+   rm -rf dist/
+   
+   # Build package
+   poetry build
+   ```
+
+3. **Test Package**
+   ```bash
+   # Test on TestPyPI first
+   poetry config repositories.testpypi https://test.pypi.org/legacy/
+   poetry config pypi-token.testpypi <test-token>
+   poetry publish -r testpypi
+   
+   # Test installation
+   pip install --index-url https://test.pypi.org/simple/ openai-image-mcp
+   ```
+
+4. **Publish to PyPI**
+   ```bash
+   # Configure production token
+   poetry config pypi-token.pypi <production-token>
+   
+   # Publish
+   poetry publish
+   ```
+
+5. **Tag Release**
+   ```bash
+   git tag v$(poetry version -s)
+   git push origin v$(poetry version -s)
+   ```
+
+### GitHub Release
+
+Create GitHub release with:
+- Tag from step 5
+- Release notes with new features/fixes
+- Attach built wheel and source dist from `dist/`
+
+### Version Strategy
+
+- **Patch (x.y.Z)**: Bug fixes, minor improvements
+- **Minor (x.Y.z)**: New features, backward compatible
+- **Major (X.y.z)**: Breaking changes, architecture updates
+
+### Pre-release Checklist
+
+- [ ] All tests pass (`poetry run pytest`)
+- [ ] Documentation updated
+- [ ] CHANGELOG.md updated
+- [ ] Version bumped appropriately
+- [ ] Dependencies up to date
+- [ ] Security scan passed
+
 This development guide provides comprehensive technical information for contributors and maintainers. For usage instructions, see README.md. For LLM-specific guidance, see LLM.md.

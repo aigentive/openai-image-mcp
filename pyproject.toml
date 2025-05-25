@@ -1,10 +1,24 @@
 [tool.poetry]
 name = "openai-image-mcp"
 version = "0.2.0"
-description = "OpenAI GPT-Image-1 MCP Server - Generate images using OpenAI's latest image model"
-authors = ["Your Name <your.email@example.com>"]
+description = "Session-based conversational image generation MCP server using OpenAI's advanced models"
+authors = ["Laza Bogdan <laza.bogdan@macro-net.ro>"]
 readme = "README.md"
 packages = [{include = "openai_image_mcp", from = "src"}]
+repository = "https://github.com/aigentive/openai-image-mcp"
+homepage = "https://github.com/aigentive/openai-image-mcp"
+keywords = ["openai", "mcp", "image-generation", "ai", "claude", "conversational"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"

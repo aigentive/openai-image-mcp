@@ -89,10 +89,37 @@ generate_image_in_session(session_id, "add more plants and warmer lighting")
 
 ### 1. Installation
 
+**Option A: Install from PyPI (Recommended)**
 ```bash
-git clone https://github.com/your-username/openai-image-mcp.git
+pip install openai-image-mcp
+```
+
+**Option B: Install from Source**
+```bash
+git clone https://github.com/aigentive/openai-image-mcp.git
 cd openai-image-mcp
+
+# Set up Python environment (choose one method)
+
+# Method 1: Using pyenv + poetry
+pyenv install 3.11.0  # or latest 3.10+
+pyenv local 3.11.0
 poetry install
+
+# Method 2: Using pyenv + venv
+pyenv install 3.11.0
+pyenv local 3.11.0
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
+
+# Method 3: Using system Python + poetry
+poetry install
+
+# Method 4: Using system Python + venv
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .
 ```
 
 ### 2. Configuration
