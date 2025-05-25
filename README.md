@@ -89,8 +89,24 @@ generate_image_in_session(session_id, "add more plants and warmer lighting")
 
 ### 1. Installation
 
+**Requirements:** Python 3.10 or higher
+
 ```bash
+# Install the package
 pip install openai-image-mcp
+```
+
+**If you need to upgrade Python:**
+
+```bash
+# Using pyenv (recommended)
+pyenv install 3.11.8
+pyenv global 3.11.8
+pip install openai-image-mcp
+
+# Or using Homebrew (macOS)
+brew install python@3.11
+python3.11 -m pip install openai-image-mcp
 ```
 
 For development installation from source, see [DEVELOPMENT.md](DEVELOPMENT.md)
@@ -229,9 +245,9 @@ generate_image_in_session(session_id, "create packaging design mockup")
 
 ## 📋 Requirements
 
-- Python 3.11+
-- OpenAI API key with GPT-4o/GPT-4.1 access
-- Poetry for dependency management
+- **Python 3.10+** (3.11+ recommended)
+- **OpenAI API key** with GPT-4o/GPT-4.1 access
+- Poetry for dependency management (development only)
 
 ## 🔐 Environment Variables
 
