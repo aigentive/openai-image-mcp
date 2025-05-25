@@ -1,0 +1,17 @@
+{
+  "description": "OpenAI Image MCP Server configuration for Claude Desktop (development with Poetry)",
+  "mcpServers": {
+    "openai-image-mcp-dev": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "poetry run python -m openai_image_mcp.server 2> mcp_server_stderr.log"
+      ],
+      "cwd": "/path/to/openai-image-mcp",
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "LOG_LEVEL": "${LOG_LEVEL:-INFO}"
+      }
+    }
+  }
+}

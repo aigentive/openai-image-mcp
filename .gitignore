@@ -139,7 +139,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# Generated images and related files
+# Generated images and related files (but not assets/)
 generated_images/
 images/
 *.png
@@ -149,6 +149,14 @@ images/
 *.bmp
 *.webp
 *_metadata.json
+
+# Allow assets directory images
+!assets/*.png
+!assets/*.jpg
+!assets/*.jpeg
+!assets/*.gif
+!assets/*.bmp
+!assets/*.webp
 
 # MCP configuration (may contain API keys)
 mcp-config.private.json

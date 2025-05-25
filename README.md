@@ -89,46 +89,13 @@ generate_image_in_session(session_id, "add more plants and warmer lighting")
 
 ### 1. Installation
 
-**Option A: Install from PyPI (Recommended)**
 ```bash
 pip install openai-image-mcp
 ```
 
-**Option B: Install from Source**
-```bash
-git clone https://github.com/aigentive/openai-image-mcp.git
-cd openai-image-mcp
+For development installation from source, see [DEVELOPMENT.md](DEVELOPMENT.md)
 
-# Set up Python environment (choose one method)
-
-# Method 1: Using pyenv + poetry
-pyenv install 3.11.0  # or latest 3.10+
-pyenv local 3.11.0
-poetry install
-
-# Method 2: Using pyenv + venv
-pyenv install 3.11.0
-pyenv local 3.11.0
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -e .
-
-# Method 3: Using system Python + poetry
-poetry install
-
-# Method 4: Using system Python + venv
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -e .
-```
-
-### 2. Configuration
-
-```bash
-export OPENAI_API_KEY="your_openai_api_key_here"
-```
-
-### 3. Claude Desktop Integration
+### 2. Claude Desktop Integration
 
 Add to your Claude Desktop MCP configuration:
 
@@ -136,9 +103,11 @@ Add to your Claude Desktop MCP configuration:
 {
   "mcpServers": {
     "openai-image-mcp": {
-      "command": "poetry",
-      "args": ["run", "python", "-m", "openai_image_mcp.server"],
-      "cwd": "/path/to/openai-image-mcp",
+      "command": "sh",
+      "args": [
+        "-c",
+        "openai-image-mcp 2> mcp_server_stderr.log"
+      ],
       "env": {
         "OPENAI_API_KEY": "your_openai_api_key_here"
       }
@@ -147,7 +116,9 @@ Add to your Claude Desktop MCP configuration:
 }
 ```
 
-### 4. Start Creating
+For development setup and alternative configurations, see [DEVELOPMENT.md](DEVELOPMENT.md)
+
+### 3. Start Creating
 
 ```python
 # Create a session for your project

@@ -66,136 +66,19 @@ src/openai_image_mcp/
 
 ## 🧪 Testing
 
-### Test Structure
-
-```
-tests/
-├── test_file_organizer.py        # File management (16 tests)
-├── test_responses_integration.py # Session architecture (20 tests)
-├── test_server.py                # MCP integration (6 tests)  
-└── test_usage_guide.py          # Documentation tools (4 tests)
-```
-
-### Running Tests
+Run the full test suite to ensure everything works:
 
 ```bash
-# Full test suite (40 tests)
+# Run all tests
 poetry run pytest
 
-# Specific components
-poetry run pytest tests/test_responses_integration.py  # Session architecture
-poetry run pytest tests/test_file_organizer.py        # File management
-poetry run pytest tests/test_server.py                # MCP integration
-
-# With coverage
+# Run with coverage
 poetry run pytest --cov=src/openai_image_mcp
 
 # Verbose output
 poetry run pytest -v
 ```
 
-### Test Categories
-
-**Unit Tests**: Individual component functionality
-- Session management operations
-- File organization logic
-- Error handling scenarios
-
-**Integration Tests**: Component interaction validation
-- Complete generation workflows
-- Session promotion functionality  
-- MCP tool integration
-
-**Error Handling Tests**: Failure mode validation
-- Invalid parameters
-- Missing files
-- Network failures
-- Malformed data
-
-## 🚀 Installation & Setup
-
-### Prerequisites
-
-- Python 3.11+
-- Poetry for dependency management
-- OpenAI API key with GPT-4o/GPT-4.1 access
-
-### Development Installation
-
-```bash
-# Clone repository
-git clone https://github.com/your-username/openai-image-mcp.git
-cd openai-image-mcp
-
-# Install Poetry (if not installed)
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Install dependencies
-poetry install
-
-# Install pre-commit hooks (optional)
-poetry run pre-commit install
-```
-
-### Environment Configuration
-
-```bash
-# Required
-export OPENAI_API_KEY="your_openai_api_key_here"
-
-# Optional configuration
-export MCP_MAX_SESSIONS="100"          # Maximum concurrent sessions
-export MCP_SESSION_TIMEOUT="3600"      # Session timeout in seconds
-export LOG_LEVEL="INFO"                # Logging level
-```
-
-### Local Testing
-
-```bash
-# Run server locally
-poetry run python -m openai_image_mcp.server
-
-# Test with example client
-poetry run python examples/test_client.py
-
-# Run integration tests
-poetry run pytest tests/test_responses_integration.py -v
-```
-
-## 🔧 Configuration
-
-### MCP Client Integration
-
-#### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "openai-image-mcp": {
-      "command": "poetry",
-      "args": ["run", "python", "-m", "openai_image_mcp.server"],
-      "cwd": "/path/to/openai-image-mcp",
-      "env": {
-        "OPENAI_API_KEY": "your_openai_api_key_here"
-      }
-    }
-  }
-}
-```
-
-#### Other MCP Clients
-
-The server follows standard MCP protocol and works with any compatible client:
-
-```bash
-# Direct execution
-poetry run python -m openai_image_mcp.server
-
-# With custom configuration
-MCP_MAX_SESSIONS=50 poetry run python -m openai_image_mcp.server
-```
 
 ## 📁 File Organization
 
@@ -239,297 +122,74 @@ Each generated image includes comprehensive metadata:
 }
 ```
 
-## 🐛 Debugging & Troubleshooting
+## 🛠️ Development Installation
 
-### Common Issues
+### Install from Source
 
-**Import Errors**
 ```bash
-# Ensure proper Python path
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"
+git clone https://github.com/aigentive/openai-image-mcp.git
+cd openai-image-mcp
 
-# Or use Poetry
+# Set up Python environment with Poetry (recommended)
+# Optional: Use pyenv for Python version management
+pyenv install 3.11.0  # or latest 3.10+
+pyenv local 3.11.0
+
+# Install dependencies with Poetry
+poetry install
+
+# Run tests to verify installation
+poetry run pytest
+```
+
+### Claude Desktop Development Configuration
+
+Copy configuration from `mcp-config.poetry.json`:
+
+```json
+{
+  "mcpServers": {
+    "openai-image-mcp-dev": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "poetry run python -m openai_image_mcp.server 2> mcp_server_stderr.log"
+      ],
+      "cwd": "/path/to/openai-image-mcp",
+      "env": {
+        "OPENAI_API_KEY": "your_openai_api_key_here",
+        "LOG_LEVEL": "DEBUG"
+      }
+    }
+  }
+}
+```
+
+### Testing Development Setup
+
+```bash
+# Run all tests
+poetry run pytest
+
+# Test the server starts without errors  
 poetry run python -m openai_image_mcp.server
+
+# Check logs for any startup issues
+tail -f mcp_server_stderr.log
 ```
 
-**Session Timeout Issues**
+### Use in Another Project
+
 ```bash
-# Increase timeout
-export MCP_SESSION_TIMEOUT="7200"  # 2 hours
-```
+# In your project directory
+poetry add --editable /path/to/openai-image-mcp
 
-**Memory Issues with Large Sessions**
-```bash
-# Reduce max sessions
-export MCP_MAX_SESSIONS="25"
-```
-
-### Logging Configuration
-
-```python
-# Enable debug logging
-export LOG_LEVEL="DEBUG"
-
-# Custom logging in code
-import logging
-logging.getLogger("openai_image_mcp").setLevel(logging.DEBUG)
-```
-
-### Performance Monitoring
-
-```python
-# Get server statistics
-result = get_server_stats()
-print(f"Active sessions: {result['active_sessions']}")
-print(f"Memory usage: {result['memory_usage']}")
+# Or from git directly
+poetry add git+https://github.com/aigentive/openai-image-mcp.git
 ```
 
 ## 🤝 Contributing
 
-### Development Workflow
+For detailed contribution guidelines, code style, and development workflow, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-1. **Fork & Clone**
-   ```bash
-   git clone https://github.com/your-username/openai-image-mcp.git
-   cd openai-image-mcp
-   ```
-
-2. **Create Feature Branch**
-   ```bash
-   git checkout -b feature/new-functionality
-   ```
-
-3. **Development**
-   ```bash
-   poetry install
-   # Make changes
-   poetry run pytest  # Ensure tests pass
-   ```
-
-4. **Submit PR**
-   - Ensure all tests pass
-   - Add tests for new functionality
-   - Update documentation
-   - Follow code style guidelines
-
-### Code Style
-
-- **Type Hints**: Required for all public functions
-- **Docstrings**: Google-style docstrings for all modules/classes/functions
-- **Error Handling**: Structured error responses with appropriate types
-- **Logging**: Use structured logging with appropriate levels
-
-### Adding New Tools
-
-1. **Define Tool Function**
-   ```python
-   @mcp.tool()
-   def new_tool(param1: str, param2: Optional[int] = None) -> Dict[str, Any]:
-       """Tool description."""
-       try:
-           # Implementation
-           return {"success": True, "result": "..."}
-       except Exception as e:
-           logger.error(f"New tool failed: {e}")
-           return {
-               "success": False,
-               "error": str(e),
-               "error_type": "tool_error"
-           }
-   ```
-
-2. **Add Tests**
-   ```python
-   def test_new_tool():
-       """Test new tool functionality."""
-       result = new_tool("test_param")
-       assert result["success"] is True
-   ```
-
-3. **Update Documentation**
-   - Add to LLM.md usage guide
-   - Update README.md tool list
-   - Add examples and use cases
-
-### Testing Guidelines
-
-- **Coverage**: Aim for >90% test coverage
-- **Error Cases**: Test all error conditions
-- **Integration**: Test tool interactions
-- **Documentation**: Test examples in documentation
-
-### Release Process
-
-1. **Version Bump**: Update version in pyproject.toml
-2. **Testing**: Full test suite must pass
-3. **Documentation**: Update README.md and LLM.md
-4. **Tag Release**: Create git tag for version
-5. **Deploy**: Update production configurations
-
-## 📚 API Reference
-
-### Session Manager
-
-```python
-class SessionManager:
-    def create_session(description: str, model: str, session_name: Optional[str]) -> ImageSession
-    def get_session(session_id: str) -> Optional[ImageSession]
-    def add_conversation_turn(session_id: str, role: str, content: Any) -> None
-    def add_generated_image(session_id: str, generation_call: ImageGenerationCall) -> None
-    def close_session(session_id: str) -> bool
-```
-
-### Responses Client
-
-```python
-class ResponsesAPIClient:
-    def generate_with_conversation(session: ImageSession, user_input: List[Dict], tools_config: Dict) -> Dict
-    def create_file_from_path(file_path: str) -> str
-    def create_file_from_bytes(file_bytes: bytes, filename: str) -> str
-```
-
-### File Organizer
-
-```python
-class FileOrganizer:
-    def get_save_path(use_case: str, prompt: str, subdir: Optional[str]) -> str
-    def save_image_metadata(image_path: str, metadata: Dict) -> str
-    def get_recent_images(use_case: Optional[str], limit: int) -> List[Dict]
-```
-
-## 🔐 Security Considerations
-
-### API Key Management
-- Never commit API keys to version control
-- Use environment variables for sensitive configuration
-- Consider using secret management services in production
-
-### File System Access
-- Images are stored in organized directories
-- Metadata files contain generation parameters only
-- No execution of user-provided code
-
-### Input Validation
-- All user inputs are validated before processing
-- File paths are sanitized to prevent directory traversal
-- Image uploads are validated for format and size
-
-### Network Security
-- All API calls use HTTPS
-- Retry logic includes circuit breaker patterns
-- Rate limiting considerations for production use
-
-## 📊 Performance Optimization
-
-### Session Management
-- Use dictionary-based O(1) lookups
-- Implement automatic cleanup for expired sessions
-- Consider Redis for distributed deployments
-
-### Memory Management
-- Conversation history trimming at 50 turns
-- Lazy loading of image data
-- Garbage collection of unused sessions
-
-### API Efficiency
-- Batch operations where possible
-- Connection pooling for HTTP requests
-- Caching of frequently accessed data
-
-## 📈 Monitoring & Observability
-
-### Metrics to Track
-- Session creation/closure rates
-- Generation success/failure rates
-- API response times
-- Memory usage patterns
-- Error frequency by type
-
-### Logging Strategy
-- Structured logging with JSON format
-- Correlation IDs for request tracing
-- Different log levels for different environments
-- Integration with log aggregation systems
-
-### Health Checks
-```python
-# Built-in health check
-result = get_server_stats()
-# Monitor: active_sessions, memory_usage, api_health
-```
-
-## 📦 Publishing & Release
-
-### Publishing to PyPI
-
-**Prerequisites:**
-- PyPI account with 2FA enabled
-- API token configured
-- Poetry installed
-
-**Release Process:**
-
-1. **Update Version**
-   ```bash
-   # Update version in pyproject.toml
-   poetry version patch  # or minor/major
-   ```
-
-2. **Build Package**
-   ```bash
-   # Clean previous builds
-   rm -rf dist/
-   
-   # Build package
-   poetry build
-   ```
-
-3. **Test Package**
-   ```bash
-   # Test on TestPyPI first
-   poetry config repositories.testpypi https://test.pypi.org/legacy/
-   poetry config pypi-token.testpypi <test-token>
-   poetry publish -r testpypi
-   
-   # Test installation
-   pip install --index-url https://test.pypi.org/simple/ openai-image-mcp
-   ```
-
-4. **Publish to PyPI**
-   ```bash
-   # Configure production token
-   poetry config pypi-token.pypi <production-token>
-   
-   # Publish
-   poetry publish
-   ```
-
-5. **Tag Release**
-   ```bash
-   git tag v$(poetry version -s)
-   git push origin v$(poetry version -s)
-   ```
-
-### GitHub Release
-
-Create GitHub release with:
-- Tag from step 5
-- Release notes with new features/fixes
-- Attach built wheel and source dist from `dist/`
-
-### Version Strategy
-
-- **Patch (x.y.Z)**: Bug fixes, minor improvements
-- **Minor (x.Y.z)**: New features, backward compatible
-- **Major (X.y.z)**: Breaking changes, architecture updates
-
-### Pre-release Checklist
-
-- [ ] All tests pass (`poetry run pytest`)
-- [ ] Documentation updated
-- [ ] CHANGELOG.md updated
-- [ ] Version bumped appropriately
-- [ ] Dependencies up to date
-- [ ] Security scan passed
-
-This development guide provides comprehensive technical information for contributors and maintainers. For usage instructions, see README.md. For LLM-specific guidance, see LLM.md.
+This development guide provides technical information for developers working with the codebase. For usage instructions, see README.md. For LLM-specific guidance, see LLM.md.
