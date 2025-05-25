@@ -981,21 +981,7 @@ def get_usage_guide() -> Dict[str, Any]:
             return {
                 "success": False,
                 "error": "Usage guide file not found",
-                "error_type": "file_not_found",
-                "fallback_info": {
-                    "version": "latest",
-                    "key_tools": [
-                        "create_image_session - Start conversational session",
-                        "generate_image_in_session - Generate with context",
-                        "generate_image - Quick single generations",
-                        "edit_image - Edit existing images",
-                        "generate_product_image - Product photography",
-                        "generate_ui_asset - UI/design assets",
-                        "get_session_status - Check session details",
-                        "list_active_sessions - See all sessions",
-                        "close_session - Close and cleanup"
-                    ]
-                }
+                "error_type": "file_not_found"
             }
             
     except Exception as e:
